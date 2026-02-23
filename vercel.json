@@ -1,5 +1,14 @@
 {
+  "functions": {
+    "api/chat.js": {
+      "includeFiles": "skills/**"
+    },
+    "api/voice-token.js": {
+      "maxDuration": 10
+    }
+  },
   "rewrites": [
-    { "source": "/api/chat", "destination": "/api/chat" }
+    { "source": "/api/chat", "destination": "/api/chat" },
+    { "source": "/api/voice-token", "destination": "/api/voice-token" }
   ]
 }

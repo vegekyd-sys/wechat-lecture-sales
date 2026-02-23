@@ -1,42 +1,39 @@
 const https = require('https');
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.MODEL || 'claude-sonnet-4-20250514';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const MODEL = process.env.MODEL || 'moonshot/moonshot-v1-8k';
 
-/**
- * Send messages to Claude API and get a reply.
- */
+function buildMessages(systemPrompt, messages) {
+  return [
+    { role: 'system', content: systemPrompt },
+    ...messages.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content,
+    })),
+  ];
+}
+
 async function chat(systemPrompt, messages) {
-  if (!ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY environment variable is not set');
   }
-
-  // Build messages for Claude API (only user/assistant roles)
-  const apiMessages = messages.map(msg => ({
-    role: msg.role === 'user' ? 'user' : 'assistant',
-    content: msg.content,
-  }));
 
   const body = JSON.stringify({
     model: MODEL,
     max_tokens: 1024,
-    system: systemPrompt,
-    messages: apiMessages,
+    messages: buildMessages(systemPrompt, messages),
   });
 
   return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
+    const req = https.request({
+      hostname: 'openrouter.ai',
+      path: '/api/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
       },
-    };
-
-    const req = https.request(options, (res) => {
+    }, (res) => {
       let data = '';
       res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
@@ -46,18 +43,56 @@ async function chat(systemPrompt, messages) {
             reject(new Error(`API error ${res.statusCode}: ${parsed.error?.message || data}`));
             return;
           }
-          const text = parsed.content?.[0]?.text || '';
-          resolve(text);
+          resolve(parsed.choices?.[0]?.message?.content || '');
         } catch (e) {
           reject(new Error('Failed to parse API response'));
         }
       });
     });
-
     req.on('error', reject);
     req.write(body);
     req.end();
   });
 }
 
-module.exports = { chat };
+function chatStream(systemPrompt, messages, res) {
+  if (!OPENROUTER_API_KEY) {
+    res.write('data: [ERROR] OPENROUTER_API_KEY not set\n\n');
+    res.end();
+    return;
+  }
+
+  const body = JSON.stringify({
+    model: MODEL,
+    max_tokens: 1024,
+    stream: true,
+    messages: buildMessages(systemPrompt, messages),
+  });
+
+  const req = https.request({
+    hostname: 'openrouter.ai',
+    path: '/api/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+    },
+  }, (apiRes) => {
+    apiRes.on('data', chunk => {
+      res.write(chunk);
+    });
+    apiRes.on('end', () => {
+      res.end();
+    });
+  });
+
+  req.on('error', (err) => {
+    res.write(`data: [ERROR] ${err.message}\n\n`);
+    res.end();
+  });
+
+  req.write(body);
+  req.end();
+}
+
+module.exports = { chat, chatStream };

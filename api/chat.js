@@ -2,82 +2,99 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const MODEL = process.env.MODEL || 'claude-sonnet-4-20250514';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const MODEL = process.env.MODEL || 'moonshot/moonshot-v1-8k';
 
-// Load skill file as system prompt
-const skillPath = path.join(__dirname, '..', 'skills', 'customer-service.md');
-const systemPrompt = fs.readFileSync(skillPath, 'utf-8');
+function loadSystemPrompt() {
+  const candidates = [
+    path.join(__dirname, '..', 'skills', 'customer-service.md'),
+    path.join(process.cwd(), 'skills', 'customer-service.md'),
+    path.join(__dirname, 'skills', 'customer-service.md'),
+  ];
+  for (const p of candidates) {
+    try {
+      return fs.readFileSync(p, 'utf-8');
+    } catch {}
+  }
+  throw new Error(`Skill file not found. Tried: ${candidates.join(', ')}. __dirname=${__dirname}, cwd=${process.cwd()}`);
+}
 
-function callClaude(apiKey, messages) {
-  const apiMessages = messages.map(msg => ({
-    role: msg.role === 'user' ? 'user' : 'assistant',
-    content: msg.content,
-  }));
+let systemPrompt;
 
-  const body = JSON.stringify({
-    model: MODEL,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: apiMessages,
-  });
+function buildMessages(messages) {
+  return [
+    { role: 'system', content: systemPrompt },
+    ...messages.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content,
+    })),
+  ];
+}
 
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
+module.exports = function handler(req, res) {
+  try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    if (!OPENROUTER_API_KEY) {
+      return res.status(500).json({ error: 'OPENROUTER_API_KEY not configured' });
+    }
+
+    // Lazy-load system prompt
+    if (!systemPrompt) {
+      systemPrompt = loadSystemPrompt();
+    }
+
+    const { messages, lang } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages is required' });
+    }
+
+    // Inject language hint into the last user message
+    const langHint = { zh: '[lang:zh]', ja: '[lang:ja]', en: '[lang:en]' }[lang] || '';
+    const taggedMessages = langHint ? messages.map((m, i) =>
+      i === messages.length - 1 && m.role === 'user'
+        ? { ...m, content: `${langHint} ${m.content}` }
+        : m
+    ) : messages;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const body = JSON.stringify({
+      model: MODEL,
+      max_tokens: 1024,
+      stream: true,
+      messages: buildMessages(taggedMessages),
+    });
+
+    const apiReq = https.request({
+      hostname: 'openrouter.ai',
+      path: '/api/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
       },
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          if (res.statusCode !== 200) {
-            reject(new Error(`API error ${res.statusCode}: ${parsed.error?.message || data}`));
-            return;
-          }
-          const text = parsed.content?.[0]?.text || '';
-          resolve(text);
-        } catch (e) {
-          reject(new Error('Failed to parse API response'));
-        }
+    }, (apiRes) => {
+      apiRes.on('data', chunk => {
+        res.write(chunk);
+      });
+      apiRes.on('end', () => {
+        res.end();
       });
     });
 
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
+    apiReq.on('error', (err) => {
+      res.write(`data: [ERROR] ${err.message}\n\n`);
+      res.end();
+    });
 
-module.exports = async function handler(req, res) {
-  // Only allow POST
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
-  }
-
-  const { messages } = req.body;
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'messages is required' });
-  }
-
-  try {
-    const reply = await callClaude(apiKey, messages);
-    res.json({ reply });
+    apiReq.write(body);
+    apiReq.end();
   } catch (err) {
-    console.error('Chat API error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 };

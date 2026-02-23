@@ -1,10 +1,34 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>在线课程顾问</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>OSM 大阪スクールオブミュージック専門学校</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
+    :root {
+      --bg-deep: #08080f;
+      --bg-main: #0e0e1a;
+      --bg-card: #16162a;
+      --bg-card-hover: #1e1e38;
+      --bg-input: #12121f;
+      --border: rgba(255,255,255,0.06);
+      --border-accent: rgba(233,30,99,0.3);
+      --text: #e8e6f0;
+      --text-dim: rgba(255,255,255,0.45);
+      --text-mid: rgba(255,255,255,0.7);
+      --accent: #e91e63;
+      --accent-soft: rgba(233,30,99,0.15);
+      --accent-glow: rgba(233,30,99,0.25);
+      --accent-bright: #ff4081;
+      --user-bg: linear-gradient(135deg, #e91e63, #c2185b);
+      --bot-avatar: linear-gradient(135deg, #e91e63, #9c27b0);
+      --user-avatar: linear-gradient(135deg, #ff4081, #f06292);
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -12,44 +36,179 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: #ededed;
-      height: 100vh;
+      font-family: 'Outfit', 'Noto Sans SC', 'Noto Sans JP', -apple-system, sans-serif;
+      background: var(--bg-deep);
+      height: 100dvh;
+      height: -webkit-fill-available;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      color: var(--text);
     }
 
-    /* Header */
+    /* ============ HEADER ============ */
     .header {
-      background: #07c160;
-      color: #fff;
-      padding: 12px 16px;
+      background: var(--bg-main);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
       text-align: center;
-      font-size: 17px;
-      font-weight: 500;
       position: relative;
       flex-shrink: 0;
+      backdrop-filter: blur(20px);
+      z-index: 10;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.4;
+    }
+
+    .header-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.5px;
+      padding: 0 70px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .header .status {
-      font-size: 12px;
-      opacity: 0.85;
-      margin-top: 2px;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
     }
 
-    /* Chat Area */
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse-dot 2s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-glow); }
+      50% { opacity: 0.7; box-shadow: 0 0 0 4px transparent; }
+    }
+
+    .lang-switcher {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .lang-trigger {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text-mid);
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 8px;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .lang-trigger:active {
+      background: rgba(255,255,255,0.08);
+    }
+
+    .lang-trigger svg {
+      width: 14px;
+      height: 14px;
+      opacity: 0.6;
+    }
+
+    .lang-dropdown {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      min-width: 120px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      z-index: 100;
+    }
+
+    .lang-dropdown.show {
+      display: block;
+    }
+
+    .lang-option {
+      display: block;
+      width: 100%;
+      padding: 10px 14px;
+      border: none;
+      background: transparent;
+      color: var(--text-mid);
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      font-weight: 400;
+      transition: background 0.15s;
+    }
+
+    .lang-option:active {
+      background: rgba(255,255,255,0.06);
+    }
+
+    .lang-option.active {
+      color: var(--accent-bright);
+      font-weight: 600;
+    }
+
+    .lang-option + .lang-option {
+      border-top: 1px solid var(--border);
+    }
+
+    /* ============ CHAT AREA ============ */
     .chat-area {
       flex: 1;
       overflow-y: auto;
-      padding: 12px 16px;
+      padding: 16px;
       -webkit-overflow-scrolling: touch;
+      background: var(--bg-deep);
+      background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(233,30,99,0.03) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(156,39,176,0.03) 0%, transparent 50%);
     }
 
+    .chat-area::-webkit-scrollbar { width: 4px; }
+    .chat-area::-webkit-scrollbar-track { background: transparent; }
+    .chat-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    /* ============ MESSAGES ============ */
     .message {
       display: flex;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
       align-items: flex-start;
+      animation: msg-in 0.3s ease-out;
+    }
+
+    @keyframes msg-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .message.user {
@@ -57,71 +216,162 @@
     }
 
     .avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 4px;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
       flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
+      font-size: 16px;
       color: #fff;
     }
 
     .message.bot .avatar {
-      background: #07c160;
-      margin-right: 10px;
+      display: none;
     }
 
     .message.user .avatar {
-      background: #576b95;
+      background: var(--user-avatar);
       margin-left: 10px;
+      box-shadow: 0 2px 12px rgba(233,30,99,0.15);
     }
 
     .bubble {
-      max-width: 70%;
-      padding: 10px 14px;
-      border-radius: 4px;
-      font-size: 15px;
-      line-height: 1.5;
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.6;
       word-break: break-word;
       position: relative;
     }
 
     .message.bot .bubble {
-      background: #fff;
-      color: #333;
-    }
-
-    .message.bot .bubble::before {
-      content: '';
-      position: absolute;
-      left: -6px;
-      top: 12px;
-      border: 6px solid transparent;
-      border-right-color: #fff;
-      border-left: 0;
+      max-width: 100%;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      border-radius: 0;
+      padding: 4px 0;
     }
 
     .message.user .bubble {
-      background: #95ec69;
-      color: #333;
+      background: var(--user-bg);
+      color: #fff;
+      border-radius: 14px 4px 14px 14px;
+      box-shadow: 0 2px 16px rgba(233,30,99,0.2);
     }
 
-    .message.user .bubble::after {
-      content: '';
-      position: absolute;
-      right: -6px;
-      top: 12px;
-      border: 6px solid transparent;
-      border-left-color: #95ec69;
-      border-right: 0;
+    /* ============ INLINE REF BUBBLE ============ */
+    .ref-sup {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 15px;
+      height: 15px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+      text-decoration: none;
+      margin-left: 2px;
+      margin-right: 1px;
+      vertical-align: super;
+      line-height: 15px;
+      cursor: pointer;
+      padding: 0 2px;
+      box-shadow: none;
+      transition: all 0.15s;
     }
 
-    /* Typing Indicator */
+    .ref-sup:active {
+      background: var(--accent-bright);
+      transform: scale(0.92);
+    }
+
+    /* ============ MARKDOWN IN BUBBLE ============ */
+    .bubble.md p { margin: 0 0 8px; }
+    .bubble.md p:last-child { margin-bottom: 0; }
+    .bubble.md h1, .bubble.md h2, .bubble.md h3, .bubble.md h4 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 10px 0 4px;
+      color: #fff;
+    }
+    .bubble.md h1 { font-size: 16px; }
+    .bubble.md h2 { font-size: 15px; }
+    .bubble.md ul, .bubble.md ol {
+      padding-left: 20px;
+      margin: 4px 0 8px;
+    }
+    .bubble.md li { margin: 3px 0; }
+    .bubble.md strong { font-weight: 600; color: #fff; }
+    .bubble.md em { font-style: italic; color: var(--text-mid); }
+    .bubble.md code {
+      background: rgba(255,255,255,0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--accent-bright);
+    }
+    .bubble.md pre {
+      background: rgba(0,0,0,0.3);
+      padding: 10px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 8px 0;
+      border: 1px solid var(--border);
+    }
+    .bubble.md pre code {
+      background: none;
+      padding: 0;
+      color: var(--text);
+    }
+    .bubble.md table {
+      border-collapse: collapse;
+      margin: 8px 0;
+      font-size: 12px;
+      width: 100%;
+    }
+    .bubble.md th, .bubble.md td {
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 6px 10px;
+    }
+    .bubble.md th {
+      background: rgba(233,30,99,0.1);
+      font-weight: 600;
+      color: #fff;
+    }
+    .bubble.md blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 12px;
+      margin: 8px 0;
+      color: var(--text-mid);
+    }
+    .bubble.md a {
+      color: var(--accent-bright);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(233,30,99,0.3);
+      transition: border-color 0.2s;
+    }
+    .bubble.md a:hover { border-bottom-color: var(--accent-bright); }
+    .bubble.md a.ref-sup {
+      color: #fff;
+      border-bottom: none;
+    }
+    .bubble.md hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 10px 0;
+    }
+
+    /* ============ TYPING INDICATOR ============ */
     .typing-indicator {
       display: none;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
       align-items: flex-start;
     }
 
@@ -130,30 +380,22 @@
     }
 
     .typing-indicator .bubble {
-      background: #fff;
-      padding: 14px 18px;
-    }
-
-    .typing-indicator .bubble::before {
-      content: '';
-      position: absolute;
-      left: -6px;
-      top: 12px;
-      border: 6px solid transparent;
-      border-right-color: #fff;
-      border-left: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border) !important;
+      padding: 14px 20px !important;
+      border-radius: 12px !important;
     }
 
     .dot-flashing {
       display: flex;
-      gap: 4px;
+      gap: 5px;
     }
 
     .dot-flashing span {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #999;
+      background: var(--accent);
       animation: dotPulse 1.4s infinite ease-in-out;
     }
 
@@ -161,121 +403,357 @@
     .dot-flashing span:nth-child(3) { animation-delay: 0.4s; }
 
     @keyframes dotPulse {
-      0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-      40% { opacity: 1; transform: scale(1); }
+      0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+      40% { opacity: 1; transform: scale(1); box-shadow: 0 0 6px var(--accent-glow); }
     }
 
-    /* Quick Replies */
+    /* ============ QUICK REPLIES ============ */
     .quick-replies {
-      padding: 8px 16px;
+      padding: 10px 16px;
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      background: #ededed;
+      background: var(--bg-deep);
       flex-shrink: 0;
+      border-top: 1px solid var(--border);
     }
 
     .quick-reply-btn {
-      padding: 6px 14px;
-      border: 1px solid #07c160;
-      border-radius: 16px;
-      background: #fff;
-      color: #07c160;
+      padding: 7px 16px;
+      border: 1px solid var(--border-accent);
+      border-radius: 20px;
+      background: var(--accent-soft);
+      color: var(--accent-bright);
       font-size: 13px;
       cursor: pointer;
       transition: all 0.2s;
+      font-family: inherit;
+      font-weight: 500;
     }
 
     .quick-reply-btn:active {
-      background: #07c160;
+      background: var(--accent);
       color: #fff;
+      box-shadow: 0 0 16px var(--accent-glow);
     }
 
-    /* Input Area */
+    /* ============ REFERENCE LINKS ============ */
+    .ref-links {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+      margin-bottom: 4px;
+    }
+
+    .ref-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--text);
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+
+    .ref-link:active {
+      background: var(--bg-card-hover);
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .ref-link-icon {
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 10px;
+    }
+
+    .ref-link-text {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .ref-link-title {
+      font-size: 13px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500;
+    }
+
+    .ref-link-url {
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ============ SUGGESTED TIPS ============ */
+    .suggest-tips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+      margin-bottom: 4px;
+    }
+
+    .suggest-tip-btn {
+      padding: 5px 12px;
+      border: 1px solid var(--border-accent);
+      border-radius: 14px;
+      background: var(--accent-soft);
+      color: var(--accent-bright);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      line-height: 1.3;
+      font-family: inherit;
+      font-weight: 500;
+    }
+
+    .suggest-tip-btn:active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    /* ============ INPUT AREA ============ */
     .input-area {
-      background: #f7f7f7;
-      padding: 10px 12px;
+      background: var(--bg-main);
+      padding: 12px 14px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
       display: flex;
       align-items: flex-end;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid var(--border);
       flex-shrink: 0;
     }
 
     .input-area textarea {
       flex: 1;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 8px 12px;
-      font-size: 15px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 14px;
       resize: none;
       outline: none;
       max-height: 100px;
-      min-height: 36px;
+      min-height: 40px;
       line-height: 1.4;
       font-family: inherit;
-      background: #fff;
+      background: var(--bg-input);
+      color: var(--text);
+      transition: border-color 0.2s;
+    }
+
+    .input-area textarea::placeholder {
+      color: var(--text-dim);
     }
 
     .input-area textarea:focus {
-      border-color: #07c160;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
     }
 
     .send-btn {
       margin-left: 10px;
-      padding: 8px 16px;
-      background: #07c160;
+      padding: 0 18px;
+      background: var(--accent);
       color: #fff;
       border: none;
-      border-radius: 4px;
-      font-size: 15px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
       flex-shrink: 0;
-      height: 36px;
+      height: 40px;
+      font-family: inherit;
+      transition: all 0.2s;
+      box-shadow: 0 2px 12px var(--accent-glow);
     }
 
     .send-btn:disabled {
-      background: #9ed7b8;
+      background: rgba(233,30,99,0.3);
       cursor: not-allowed;
+      box-shadow: none;
     }
 
     .send-btn:active:not(:disabled) {
-      background: #06ad56;
+      background: var(--accent-bright);
+      transform: scale(0.96);
     }
 
-    /* System message */
+    /* ============ SYSTEM MESSAGE ============ */
     .system-msg {
       text-align: center;
-      color: #999;
+      color: var(--text-dim);
       font-size: 12px;
-      margin: 8px 0 16px;
+      margin: 12px 0 20px;
+      font-weight: 400;
+    }
+    /* ============ PHONE CALL BUTTON ============ */
+    .phone-call-btn {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text-mid);
+      cursor: pointer;
+      border-radius: 10px;
+      transition: all 0.2s;
+    }
+    .phone-call-btn:active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent-bright);
+    }
+    .phone-call-btn svg { width: 18px; height: 18px; }
+
+    /* ============ VOICE CALL OVERLAY ============ */
+    .vc-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: linear-gradient(180deg, #0a0a18 0%, #12122a 40%, #1a0a20 100%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px calc(40px + env(safe-area-inset-bottom, 0px));
+      transition: opacity 0.3s ease;
+    }
+    .vc-overlay.active { display: flex; }
+
+    .vc-header { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .vc-avatar {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: var(--bot-avatar);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px; position: relative;
+    }
+    .vc-avatar-ring {
+      position: absolute; inset: -6px; border-radius: 50%;
+      border: 2px solid var(--accent); opacity: 0;
+    }
+    .vc-overlay.connected .vc-avatar-ring { animation: vc-ring 2s infinite; }
+    @keyframes vc-ring {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      100% { transform: scale(1.2); opacity: 0; }
+    }
+    .vc-name { font-size: 18px; font-weight: 600; color: #fff; text-align: center; }
+    .vc-status { font-size: 14px; color: var(--text-dim); transition: color 0.3s; }
+    .vc-overlay.connected .vc-status { color: #4caf50; }
+
+    .vc-wave {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+    }
+    .vc-wave-bar {
+      width: 4px; height: 10px; background: var(--accent);
+      border-radius: 2px; transition: height 0.15s;
+    }
+    .vc-overlay.ai-speaking .vc-wave-bar { animation: vc-wave 0.5s ease-in-out infinite alternate; }
+    .vc-wave-bar:nth-child(1) { animation-delay: 0s; }
+    .vc-wave-bar:nth-child(2) { animation-delay: 0.08s; }
+    .vc-wave-bar:nth-child(3) { animation-delay: 0.16s; }
+    .vc-wave-bar:nth-child(4) { animation-delay: 0.24s; }
+    .vc-wave-bar:nth-child(5) { animation-delay: 0.32s; }
+    @keyframes vc-wave {
+      from { height: 8px; } to { height: 44px; }
+    }
+
+    .vc-captions {
+      width: 100%; height: 33vh; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 10px;
+      padding: 16px 8px;
+      mask-image: linear-gradient(transparent 0%, black 15%, black 100%);
+      -webkit-mask-image: linear-gradient(transparent 0%, black 15%, black 100%);
+    }
+    .vc-captions::-webkit-scrollbar { display: none; }
+    .vc-caption { animation: msg-in 0.3s ease-out; }
+    .vc-caption.user {
+      font-size: 14px; color: var(--text-dim); text-align: right;
+    }
+    .vc-caption.ai {
+      font-size: 16px; color: #fff; text-align: left; line-height: 1.5;
+    }
+    .vc-caption.ai.streaming::after {
+      content: '▍'; color: var(--accent); animation: vc-blink 0.7s infinite;
+    }
+    @keyframes vc-blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+
+    .vc-controls {
+      display: flex; align-items: center; justify-content: center; gap: 36px;
+      padding-top: 16px;
+    }
+    .vc-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      background: none; border: none; cursor: pointer;
+      color: var(--text-mid); font-size: 11px; font-family: inherit;
+    }
+    .vc-btn svg { width: 24px; height: 24px; }
+    .vc-mute-btn svg, .vc-speaker-btn svg {
+      padding: 12px; width: 48px; height: 48px;
+      border-radius: 50%; background: rgba(255,255,255,0.08);
+    }
+    .vc-mute-btn.active svg { background: rgba(255,255,255,0.2); color: var(--accent); }
+    .vc-hangup-btn { color: #fff; }
+    .vc-hangup-btn svg {
+      padding: 16px; width: 60px; height: 60px;
+      border-radius: 50%; background: #f44336;
+      box-shadow: 0 4px 20px rgba(244,67,54,0.4);
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <div>在线课程顾问</div>
-    <div class="status">在线</div>
-  </div>
-
-  <div class="chat-area" id="chatArea">
-    <div class="system-msg">课程顾问已接入，有什么可以帮您？</div>
-  </div>
-
-  <div class="typing-indicator" id="typingIndicator">
-    <div class="avatar" style="background:#07c160; margin-right:10px;">🎓</div>
-    <div class="bubble">
-      <div class="dot-flashing">
-        <span></span><span></span><span></span>
+    <button class="phone-call-btn" onclick="openVoiceCall()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+    </button>
+    <div class="header-title" id="headerTitle">OSM 大阪スクールオブミュージック専門学校</div>
+    <div class="status" id="headerStatus"><span class="status-dot"></span>オンライン</div>
+    <div class="lang-switcher">
+      <button class="lang-trigger" id="langTrigger" onclick="toggleLangDropdown()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span id="langLabel">日本語</span>
+      </button>
+      <div class="lang-dropdown" id="langDropdown">
+        <button class="lang-option" data-lang="ja" onclick="switchLang('ja')">日本語</button>
+        <button class="lang-option" data-lang="zh" onclick="switchLang('zh')">中文</button>
+        <button class="lang-option" data-lang="en" onclick="switchLang('en')">English</button>
       </div>
     </div>
   </div>
 
-  <div class="quick-replies" id="quickReplies">
-    <button class="quick-reply-btn" onclick="sendQuickReply(this)">想了解课程</button>
-    <button class="quick-reply-btn" onclick="sendQuickReply(this)">课程价格</button>
-    <button class="quick-reply-btn" onclick="sendQuickReply(this)">免费体验</button>
-    <button class="quick-reply-btn" onclick="sendQuickReply(this)">如何报名</button>
+  <div class="chat-area" id="chatArea">
+    <div class="system-msg" id="systemMsg">OSM 入学相談スタッフがお答えします。ご質問をどうぞ！</div>
+    <div class="typing-indicator" id="typingIndicator">
+      <div class="bubble">
+        <div class="dot-flashing">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <div class="quick-replies" id="quickReplies"></div>
 
   <div class="input-area">
     <textarea id="messageInput" rows="1" placeholder="输入消息..."
@@ -284,6 +762,123 @@
   </div>
 
   <script>
+    // --- i18n ---
+    const i18n = {
+      zh: {
+        title: 'OSM 大阪音乐专门学校',
+        status: '在线',
+        systemMsg: 'OSM 招生顾问已接入，有什么可以帮你？',
+        placeholder: '输入消息...',
+        send: '发送',
+        networkError: '网络异常，请检查连接后重试。',
+        quickReplies: [
+          '学校有哪些专业',
+          '入学条件是什么',
+          '想参加体验活动',
+          '留学生可以报名吗'
+        ]
+      },
+      ja: {
+        title: 'OSM 大阪スクールオブミュージック専門学校',
+        status: 'オンライン',
+        systemMsg: 'OSM 入学相談スタッフがお答えします。ご質問をどうぞ！',
+        placeholder: 'メッセージを入力...',
+        send: '送信',
+        networkError: 'ネットワークエラーが発生しました。接続を確認して再度お試しください。',
+        quickReplies: [
+          'どんなコースがありますか',
+          '入学条件を教えてください',
+          'オープンキャンパスに参加したい',
+          '留学生でも入学できますか'
+        ]
+      },
+      en: {
+        title: 'OSM Osaka School of Music',
+        status: 'Online',
+        systemMsg: 'OSM Admissions Advisor is here to help. Ask me anything!',
+        placeholder: 'Type a message...',
+        send: 'Send',
+        networkError: 'Network error. Please check your connection and try again.',
+        quickReplies: [
+          'What courses are available?',
+          'What are the admission requirements?',
+          'I want to visit the campus',
+          'Can international students apply?'
+        ]
+      }
+    };
+
+    const langNames = { zh: '中文', ja: '日本語', en: 'English' };
+
+    let currentLang = (() => {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('lang') || localStorage.getItem('osm_lang') || 'ja';
+    })();
+
+    function toggleLangDropdown() {
+      document.getElementById('langDropdown').classList.toggle('show');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.lang-switcher')) {
+        document.getElementById('langDropdown').classList.remove('show');
+      }
+    });
+
+    function switchLang(lang) {
+      currentLang = lang;
+      localStorage.setItem('osm_lang', lang);
+      document.getElementById('langDropdown').classList.remove('show');
+      applyLang();
+    }
+
+    function applyLang() {
+      const t = i18n[currentLang];
+      document.getElementById('headerTitle').textContent = t.title;
+      document.getElementById('headerStatus').innerHTML = '<span class="status-dot"></span>' + t.status;
+      document.getElementById('systemMsg').textContent = t.systemMsg;
+      document.getElementById('messageInput').placeholder = t.placeholder;
+      document.getElementById('sendBtn').textContent = t.send;
+      document.title = t.title;
+
+      // Update lang trigger label and dropdown active state
+      document.getElementById('langLabel').textContent = langNames[currentLang];
+      document.querySelectorAll('.lang-option').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === currentLang);
+      });
+
+      // Update quick replies if they're still visible
+      const qr = document.getElementById('quickReplies');
+      if (qr.style.display !== 'none') {
+        qr.innerHTML = '';
+        t.quickReplies.forEach(text => {
+          const btn = document.createElement('button');
+          btn.className = 'quick-reply-btn';
+          btn.textContent = text;
+          btn.onclick = () => sendQuickReply(btn);
+          qr.appendChild(btn);
+        });
+      }
+    }
+
+    // --- Markdown ---
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+    });
+
+    function renderMarkdown(text) {
+      return marked.parse(text);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML.replace(/\n/g, '<br>');
+    }
+
+    // --- Chat logic ---
     const chatArea = document.getElementById('chatArea');
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -315,23 +910,21 @@
       const div = document.createElement('div');
       div.className = `message ${role === 'user' ? 'user' : 'bot'}`;
 
-      const avatar = role === 'user' ? '👤' : '🎓';
-      div.innerHTML = `
-        <div class="avatar">${avatar}</div>
-        <div class="bubble">${escapeHtml(content)}</div>
-      `;
+      if (role === 'user') {
+        div.innerHTML = `
+          <div class="avatar">👤</div>
+          <div class="bubble">${escapeHtml(content)}</div>
+        `;
+      } else {
+        div.innerHTML = `<div class="bubble">${escapeHtml(content)}</div>`;
+      }
 
       chatArea.appendChild(div);
       scrollToBottom();
     }
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML.replace(/\n/g, '<br>');
-    }
-
     function showTyping() {
+      chatArea.appendChild(typingIndicator);
       typingIndicator.classList.add('show');
       scrollToBottom();
     }
@@ -343,6 +936,111 @@
     function sendQuickReply(btn) {
       messageInput.value = btn.textContent;
       sendMessage();
+    }
+
+    function parseReply(text) {
+      let body = text;
+      let refs = [];
+      let tips = [];
+
+      const refSep = '---REFERENCES---';
+      const tipSep = '---QUICK_REPLIES---';
+
+      const refIdx = body.indexOf(refSep);
+      if (refIdx !== -1) {
+        const afterRef = body.substring(refIdx + refSep.length);
+        body = body.substring(0, refIdx).trimEnd();
+        const tipIdx = afterRef.indexOf(tipSep);
+        const refBlock = tipIdx !== -1 ? afterRef.substring(0, tipIdx) : afterRef;
+        refs = refBlock.trim().split('\n').map(l => l.trim()).filter(l => l.includes('|')).map(l => {
+          const parts = l.split('|');
+          // Support both "num|url|title" and "url|title"
+          if (parts.length >= 3) {
+            return { num: parts[0].trim(), url: parts[1].trim(), title: parts.slice(2).join('|').trim() };
+          }
+          return { num: '', url: parts[0].trim(), title: parts.slice(1).join('|').trim() };
+        });
+        if (tipIdx !== -1) {
+          tips = afterRef.substring(tipIdx + tipSep.length).trim().split('\n').map(t => t.trim()).filter(t => t.length > 0);
+        }
+      } else {
+        const tipIdx = body.indexOf(tipSep);
+        if (tipIdx !== -1) {
+          const tipsText = body.substring(tipIdx + tipSep.length).trim();
+          body = body.substring(0, tipIdx).trimEnd();
+          tips = tipsText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+        }
+      }
+
+      return { body, refs, tips };
+    }
+
+    function injectInlineRefs(html, refs) {
+      // Build a map of ref number -> url
+      const refMap = {};
+      refs.forEach((ref, i) => {
+        const num = ref.num || String(i + 1);
+        refMap[num] = ref.url;
+      });
+
+      // Replace [^N] in rendered HTML with clickable bubbles
+      return html.replace(/\[\^(\d+)\]/g, (match, num) => {
+        const url = refMap[num];
+        if (url) {
+          return `<a class="ref-sup" href="${url}" target="_blank" rel="noopener" title="${url}">${num}</a>`;
+        }
+        return match;
+      });
+    }
+
+    function renderRefs(refs) {
+      if (refs.length === 0) return;
+      const div = document.createElement('div');
+      div.className = 'ref-links';
+      refs.forEach(ref => {
+        const a = document.createElement('a');
+        a.className = 'ref-link';
+        a.href = ref.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.innerHTML = `
+          <span class="ref-link-icon">🔗</span>
+          <span class="ref-link-text">
+            <span class="ref-link-title">${escapeHtml(ref.title)}</span>
+            <span class="ref-link-url">${escapeHtml(ref.url)}</span>
+          </span>
+        `;
+        div.appendChild(a);
+      });
+      chatArea.appendChild(div);
+      scrollToBottom();
+    }
+
+    function renderTips(tips) {
+      if (tips.length === 0) return;
+      const div = document.createElement('div');
+      div.className = 'suggest-tips';
+      tips.forEach(tip => {
+        const btn = document.createElement('button');
+        btn.className = 'suggest-tip-btn';
+        btn.textContent = tip;
+        btn.onclick = () => {
+          messageInput.value = tip;
+          sendMessage();
+        };
+        div.appendChild(btn);
+      });
+      chatArea.appendChild(div);
+      scrollToBottom();
+    }
+
+    function createBotBubble() {
+      const div = document.createElement('div');
+      div.className = 'message bot';
+      div.innerHTML = `<div class="bubble"></div>`;
+      chatArea.appendChild(div);
+      scrollToBottom();
+      return div.querySelector('.bubble');
     }
 
     async function sendMessage() {
@@ -366,22 +1064,68 @@
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: conversationHistory })
+          body: JSON.stringify({ messages: conversationHistory, lang: currentLang })
         });
 
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        let bubble = null;
+        let fullReply = '';
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const json = JSON.parse(payload);
+              const chunk = json.choices?.[0]?.delta?.content || '';
+              if (chunk) {
+                if (!bubble) {
+                  hideTyping();
+                  bubble = createBotBubble();
+                }
+                fullReply += chunk;
+                // During streaming show plain text
+                bubble.innerHTML = escapeHtml(fullReply);
+                scrollToBottom();
+              }
+            } catch {}
+          }
         }
 
-        const data = await res.json();
-        const reply = data.reply || '抱歉，暂时无法回复，请稍后再试。';
+        if (!bubble) {
+          hideTyping();
+        }
 
-        hideTyping();
-        addMessage(reply, 'bot');
-        conversationHistory.push({ role: 'assistant', content: reply });
+        // Parse references and tips from reply
+        const { body, refs, tips } = parseReply(fullReply);
+        // Re-render body as markdown with inline ref bubbles
+        if (bubble) {
+          bubble.classList.add('md');
+          let html = renderMarkdown(body);
+          if (refs.length > 0) {
+            html = injectInlineRefs(html, refs);
+          }
+          bubble.innerHTML = html;
+        }
+        conversationHistory.push({ role: 'assistant', content: body });
+        renderRefs(refs);
+        renderTips(tips);
       } catch (err) {
         hideTyping();
-        addMessage('网络异常，请检查连接后重试。', 'bot');
+        addMessage(i18n[currentLang].networkError, 'bot');
         console.error('Chat error:', err);
       } finally {
         isWaiting = false;
@@ -389,6 +1133,477 @@
         messageInput.focus();
       }
     }
+
+    // Init
+    applyLang();
+  </script>
+
+  <!-- Voice Call Overlay -->
+  <div class="vc-overlay" id="vcOverlay">
+    <div class="vc-header">
+      <div class="vc-avatar"><div class="vc-avatar-ring"></div>🎵</div>
+      <div class="vc-name" id="vcName">OSM 大阪スクールオブミュージック</div>
+      <div class="vc-status" id="vcStatus">接続中...</div>
+      <div class="vc-mic-level" id="vcMicLevel" style="margin-top:8px;height:4px;width:120px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden"><div id="vcMicBar" style="height:100%;width:0%;background:#4caf50;border-radius:2px;transition:width 0.1s"></div></div>
+    </div>
+    <div class="vc-wave">
+      <div class="vc-wave-bar"></div><div class="vc-wave-bar"></div><div class="vc-wave-bar"></div><div class="vc-wave-bar"></div><div class="vc-wave-bar"></div>
+    </div>
+    <div class="vc-captions" id="vcCaptions"></div>
+    <div id="vcDebug" style="position:absolute;top:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#0f0;font-size:11px;font-family:monospace;padding:8px;z-index:9999;display:none;white-space:pre-wrap"></div>
+    <div class="vc-controls">
+      <button class="vc-btn vc-mute-btn" id="vcMuteBtn" onclick="vcToggleMute()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+      <button class="vc-btn vc-hangup-btn" onclick="vcHangup()">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.96.96 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 0 0-2.67-1.85.996.996 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
+      </button>
+      <button class="vc-btn vc-speaker-btn" id="vcSpeakerBtn" onclick="vcToggleSpeaker()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+  // ============ GEMINI LIVE VOICE CALL ============
+  // Debug log - only console, debug panel hidden by default (add ?vcdebug to URL to show)
+  const vcShowDebug = location.search.includes('vcdebug');
+  function vcLog(msg) {
+    console.log('[VC]', msg);
+    if (!vcShowDebug) return;
+    const el = document.getElementById('vcDebug');
+    if (el) { el.style.display = 'block'; el.textContent += msg + '\n'; el.scrollTop = el.scrollHeight; }
+  }
+
+  const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
+  const GEMINI_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
+
+  let vcWs = null;           // WebSocket
+  let vcAudioCtx = null;     // AudioContext for playback
+  let vcMicStream = null;    // MediaStream from mic
+  let vcMicCtx = null;       // AudioContext for mic capture
+  let vcMicWorklet = null;   // AudioWorklet node
+  let vcIsMuted = false;
+  let vcPlayQueue = [];      // Audio chunks to play
+  let vcIsPlaying = false;
+  let vcCurrentAiText = '';
+
+  const vcOverlay = document.getElementById('vcOverlay');
+  const vcCaptions = document.getElementById('vcCaptions');
+  const vcStatusEl = document.getElementById('vcStatus');
+
+  // Voice system instruction - loaded from voice-service.md
+  let VOICE_SYSTEM_INSTRUCTION = '';
+
+  async function vcLoadSystemInstruction() {
+    if (VOICE_SYSTEM_INSTRUCTION) return VOICE_SYSTEM_INSTRUCTION;
+    try {
+      const res = await fetch('/voice-service.md');
+      VOICE_SYSTEM_INSTRUCTION = await res.text();
+      vcLog('Loaded voice skill: ' + VOICE_SYSTEM_INSTRUCTION.length + ' chars');
+    } catch {
+      VOICE_SYSTEM_INSTRUCTION = 'You are OSM school phone receptionist. Be helpful.';
+      vcLog('WARN: voice skill load failed, using fallback');
+    }
+    return VOICE_SYSTEM_INSTRUCTION;
+  }
+
+  let vcConnected = false; // track if setup completed
+
+  async function openVoiceCall() {
+    // Update UI names based on current language
+    const names = { ja: 'OSM 大阪スクールオブミュージック', zh: 'OSM 大阪音乐专门学校', en: 'OSM Osaka School of Music' };
+    const statuses = { ja: '接続中...', zh: '连接中...', en: 'Connecting...' };
+    document.getElementById('vcName').textContent = names[currentLang] || names.ja;
+    vcStatusEl.textContent = statuses[currentLang] || statuses.ja;
+    vcCaptions.innerHTML = '';
+    vcCurrentAiText = '';
+    vcConnected = false;
+    vcOverlay.className = 'vc-overlay active';
+
+    try {
+      // Load voice system instruction
+      await vcLoadSystemInstruction();
+
+      // Create AudioContext immediately in click handler (browser autoplay policy)
+      if (!vcAudioCtx) {
+        vcAudioCtx = new AudioContext({ sampleRate: 24000 });
+      }
+      if (vcAudioCtx.state === 'suspended') await vcAudioCtx.resume();
+      vcLog('Playback AudioCtx: ' + vcAudioCtx.state);
+
+      // 1. Request mic permission FIRST (must be close to user gesture for iOS)
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('需要 HTTPS 才能使用麦克风。请通过 Vercel 部署链接访问。');
+      }
+      vcMicStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true }
+      });
+      vcLog('Mic permission granted');
+
+      // Create mic AudioContext NOW (still in user gesture chain)
+      vcMicCtx = new AudioContext();
+      if (vcMicCtx.state === 'suspended') await vcMicCtx.resume();
+      vcLog('Mic AudioCtx: ' + vcMicCtx.state + ' rate=' + vcMicCtx.sampleRate);
+
+      // 2. Get API key from server
+      const tokenRes = await fetch('/api/voice-token');
+      if (!tokenRes.ok) throw new Error('Failed to get voice token');
+      const { apiKey } = await tokenRes.json();
+      vcLog('Got API key');
+
+      // 3. Connect WebSocket
+      vcWs = new WebSocket(`${GEMINI_WS_URL}?key=${apiKey}`);
+      vcWs.onopen = () => {
+        vcLog('WS opened, sending setup');
+        vcOnWsOpen();
+      };
+      vcWs.onmessage = (e) => vcOnWsMessage(e);
+      vcWs.onerror = (e) => {
+        vcLog('WS error');
+        if (!vcConnected) {
+          vcStatusEl.textContent = 'Connection error';
+        }
+      };
+      vcWs.onclose = (e) => {
+        vcLog('WS closed: ' + e.code + ' ' + (e.reason || ''));
+        // Show disconnect reason, don't auto-hangup
+        if (vcOverlay.classList.contains('active')) {
+          const msg = e.code === 1000 ? '通話終了' : '切断: ' + (e.reason || 'code=' + e.code);
+          vcStatusEl.textContent = msg;
+          vcStatusEl.style.color = '#f44336';
+        }
+      };
+    } catch (err) {
+      vcLog('ERROR: ' + err.message);
+      const errMsgs = { ja: 'エラー', zh: '错误', en: 'Error' };
+      vcStatusEl.textContent = (errMsgs[currentLang] || errMsgs.ja) + ': ' + err.message;
+      // Don't auto-hangup, let user see the error and manually close
+    }
+  }
+
+  function vcOnWsOpen() {
+    // Send setup message
+    vcWs.send(JSON.stringify({
+      setup: {
+        model: GEMINI_MODEL,
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }
+          }
+        },
+        systemInstruction: { parts: [{ text: VOICE_SYSTEM_INSTRUCTION }] },
+        tools: [{ functionDeclarations: [{
+          name: 'end_call',
+          description: 'End the phone call. Use this when the user says goodbye, thanks and wants to hang up, or clearly indicates the conversation is over.'
+        }] }]
+      }
+    }));
+  }
+
+  function vcOnWsMessage(event) {
+    let msg;
+    if (event.data instanceof Blob) {
+      event.data.text().then(text => {
+        try { vcHandleServerMsg(JSON.parse(text)); } catch {}
+      });
+      return;
+    }
+    try { msg = JSON.parse(event.data); } catch { return; }
+    vcHandleServerMsg(msg);
+  }
+
+  function vcHandleServerMsg(msg) {
+    // Log all messages for debugging
+    const msgKeys = Object.keys(msg);
+    vcLog('GMsg:' + msgKeys.join(',') + (msg.serverContent ? ' p:' + (msg.serverContent.modelTurn?.parts?.length||0) + ' done:' + !!msg.serverContent.turnComplete : ''));
+
+    // Setup complete
+    if (msg.setupComplete) {
+      vcLog('Setup complete!');
+      vcConnected = true;
+      const connected = { ja: '通話中', zh: '通话中', en: 'Connected' };
+      vcStatusEl.textContent = connected[currentLang] || connected.ja;
+      vcOverlay.classList.add('connected');
+      vcStartMic();
+      // Send initial greeting prompt - keep it SHORT so AI gives a brief greeting
+      const greetPrompts = {
+        ja: '簡潔に挨拶して、どんなご相談か聞いてください。一言二言で十分です。',
+        zh: '简短打个招呼，问对方想咨询什么。一两句话就够了。',
+        en: 'Briefly greet and ask what they want to know. Keep it to one or two sentences.'
+      };
+      vcWs.send(JSON.stringify({
+        clientContent: {
+          turns: [{ role: 'user', parts: [{ text: greetPrompts[currentLang] || greetPrompts.ja }] }],
+          turnComplete: true
+        }
+      }));
+      vcLog('Sent greeting prompt');
+      return;
+    }
+
+    // Tool call - AI wants to end the call
+    if (msg.toolCall) {
+      const fn = msg.toolCall.functionCalls?.[0];
+      if (fn && fn.name === 'end_call') {
+        vcLog('AI called end_call');
+        // Wait for any remaining audio to finish, then hangup
+        setTimeout(() => {
+          vcStatusEl.textContent = currentLang === 'zh' ? '通话已结束' :
+            currentLang === 'en' ? 'Call ended' : '通話終了';
+          setTimeout(() => vcHangup(), 1500);
+        }, 2000);
+        return;
+      }
+    }
+
+    // goAway = server is about to close connection
+    if (msg.goAway) {
+      vcLog('GoAway received - server ending session');
+      vcStatusEl.textContent = currentLang === 'zh' ? '会话超时，请重新拨打' :
+        currentLang === 'en' ? 'Session timeout, please call again' : 'セッションタイムアウト。再度お電話ください';
+      vcStatusEl.style.color = '#ff9800';
+      return;
+    }
+
+    // Server content (audio + text)
+    if (msg.serverContent) {
+      const sc = msg.serverContent;
+
+      // Interruption
+      if (sc.interrupted) {
+        vcPlayQueue = [];
+        vcOverlay.classList.remove('ai-speaking');
+        return;
+      }
+
+      // Model turn parts
+      if (sc.modelTurn && sc.modelTurn.parts) {
+        for (const part of sc.modelTurn.parts) {
+          if (part.inlineData && part.inlineData.mimeType && part.inlineData.mimeType.startsWith('audio/')) {
+            vcOverlay.classList.add('ai-speaking');
+            vcQueueAudio(part.inlineData.data);
+          }
+          // Function call in parts
+          if (part.functionCall && part.functionCall.name === 'end_call') {
+            vcLog('AI end_call (via part)');
+            setTimeout(() => {
+              vcStatusEl.textContent = currentLang === 'zh' ? '通话已结束' :
+                currentLang === 'en' ? 'Call ended' : '通話終了';
+              setTimeout(() => vcHangup(), 1500);
+            }, 2000);
+          }
+          if (part.text) {
+            vcLog('AI text: ' + part.text.substring(0, 60));
+          }
+        }
+      }
+
+      // Turn complete
+      if (sc.turnComplete) {
+        vcOverlay.classList.remove('ai-speaking');
+      }
+    }
+  }
+
+  // ---- Mic capture ----
+  function vcDownsample(buffer, fromRate, toRate) {
+    if (fromRate === toRate) return buffer;
+    const ratio = fromRate / toRate;
+    const newLen = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) {
+      result[i] = buffer[Math.round(i * ratio)];
+    }
+    return result;
+  }
+
+  async function vcStartMic() {
+    if (!vcMicCtx || !vcMicStream) { vcLog('ERROR: No mic ctx/stream'); return; }
+    try {
+      if (vcMicCtx.state === 'suspended') await vcMicCtx.resume();
+      const nativeRate = vcMicCtx.sampleRate;
+      vcLog('Mic: state=' + vcMicCtx.state + ' rate=' + nativeRate);
+
+      const source = vcMicCtx.createMediaStreamSource(vcMicStream);
+
+      // Volume meter via AnalyserNode
+      const analyser = vcMicCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      const micBar = document.getElementById('vcMicBar');
+      function updateLevel() {
+        if (!vcMicCtx || vcMicCtx.state === 'closed') return;
+        analyser.getByteFrequencyData(dataArr);
+        let sum = 0;
+        for (let i = 0; i < dataArr.length; i++) sum += dataArr[i];
+        const avg = sum / dataArr.length;
+        const pct = Math.min(100, avg / 128 * 100);
+        if (micBar) micBar.style.width = pct + '%';
+        requestAnimationFrame(updateLevel);
+      }
+      updateLevel();
+
+      // Try AudioWorklet (file-based, most reliable)
+      let sendCount = 0;
+      try {
+        await vcMicCtx.audioWorklet.addModule('/pcm-worklet.js');
+        const worklet = new AudioWorkletNode(vcMicCtx, 'pcm-processor');
+        worklet.port.onmessage = (e) => {
+          if (vcIsMuted || !vcWs || vcWs.readyState !== WebSocket.OPEN) return;
+          // Downsample from native rate to 16000
+          const pcm16 = new Int16Array(e.data.pcm);
+          const float32 = new Float32Array(pcm16.length);
+          for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768;
+          const resampled = vcDownsample(float32, nativeRate, 16000);
+          const out = new Int16Array(resampled.length);
+          for (let i = 0; i < resampled.length; i++) out[i] = Math.max(-32768, Math.min(32767, Math.round(resampled[i] * 32767)));
+
+          const base64 = vcArrayBufferToBase64(out.buffer);
+          vcWs.send(JSON.stringify({
+            realtimeInput: { mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: base64 }] }
+          }));
+          sendCount++;
+          if (sendCount <= 3 || sendCount % 100 === 0) vcLog('WK#' + sendCount + ' s=' + out.length);
+        };
+        source.connect(worklet);
+        worklet.connect(vcMicCtx.destination);
+        vcMicWorklet = worklet;
+        vcLog('Mic: AudioWorklet OK (' + nativeRate + '→16k)');
+      } catch (workletErr) {
+        // Fallback: ScriptProcessorNode
+        vcLog('Worklet fail→ScriptProcessor: ' + workletErr.message);
+        const processor = vcMicCtx.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (e) => {
+          if (vcIsMuted || !vcWs || vcWs.readyState !== WebSocket.OPEN) return;
+          const float32 = e.inputBuffer.getChannelData(0);
+          const resampled = vcDownsample(float32, nativeRate, 16000);
+          const pcm16 = new Int16Array(resampled.length);
+          for (let i = 0; i < resampled.length; i++) pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(resampled[i] * 32767)));
+          const base64 = vcArrayBufferToBase64(pcm16.buffer);
+          vcWs.send(JSON.stringify({
+            realtimeInput: { mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: base64 }] }
+          }));
+          sendCount++;
+          if (sendCount <= 3 || sendCount % 100 === 0) vcLog('SP#' + sendCount + ' s=' + pcm16.length);
+        };
+        source.connect(processor);
+        processor.connect(vcMicCtx.destination);
+        vcMicWorklet = processor;
+        vcLog('Mic: ScriptProcessor OK (' + nativeRate + '→16k)');
+      }
+    } catch (err) {
+      vcLog('Mic capture FAIL: ' + err.message);
+    }
+  }
+
+  // ---- Audio playback ----
+  let vcPlayCount = 0;
+
+  function vcQueueAudio(base64Data) {
+    const bytes = vcBase64ToBytes(base64Data);
+    vcPlayQueue.push(bytes);
+    vcPlayCount++;
+    if (vcPlayCount % 20 === 1) vcLog('Play#' + vcPlayCount + ' ' + bytes.length + 'B');
+    if (!vcIsPlaying) vcPlayNext();
+  }
+
+  async function vcPlayNext() {
+    if (vcPlayQueue.length === 0) { vcIsPlaying = false; return; }
+    vcIsPlaying = true;
+    const bytes = vcPlayQueue.shift();
+
+    if (!vcAudioCtx) {
+      vcAudioCtx = new AudioContext({ sampleRate: 24000 });
+    }
+    if (vcAudioCtx.state === 'suspended') {
+      try { await vcAudioCtx.resume(); } catch (e) { vcLog('AudioCtx resume fail'); }
+    }
+
+    const float32 = new Float32Array(bytes.length / 2);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let i = 0; i < float32.length; i++) {
+      float32[i] = view.getInt16(i * 2, true) / 32768;
+    }
+
+    const audioBuffer = vcAudioCtx.createBuffer(1, float32.length, 24000);
+    audioBuffer.getChannelData(0).set(float32);
+
+    const source = vcAudioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(vcAudioCtx.destination);
+    source.onended = () => vcPlayNext();
+    source.start();
+  }
+
+  // ---- Captions ----
+  function vcAddCaption(text, role) {
+    const div = document.createElement('div');
+    div.className = `vc-caption ${role}`;
+    div.textContent = text;
+    if (role === 'ai') { div.id = 'vcLiveAiCaption'; div.classList.add('streaming'); }
+    vcCaptions.appendChild(div);
+    vcCaptions.scrollTop = vcCaptions.scrollHeight;
+  }
+
+  function vcUpdateAiCaption(text) {
+    let el = document.getElementById('vcLiveAiCaption');
+    if (!el) vcAddCaption(text, 'ai');
+    else el.textContent = text;
+    vcCaptions.scrollTop = vcCaptions.scrollHeight;
+  }
+
+  function vcFinalizeAiCaption() {
+    const el = document.getElementById('vcLiveAiCaption');
+    if (el) { el.classList.remove('streaming'); el.removeAttribute('id'); }
+  }
+
+  // ---- Controls ----
+  function vcToggleMute() {
+    vcIsMuted = !vcIsMuted;
+    document.getElementById('vcMuteBtn').classList.toggle('active', vcIsMuted);
+    if (vcMicStream) {
+      vcMicStream.getAudioTracks().forEach(t => { t.enabled = !vcIsMuted; });
+    }
+  }
+
+  function vcToggleSpeaker() {
+    // Toggle speaker (could lower volume or switch output)
+    document.getElementById('vcSpeakerBtn').classList.toggle('active');
+  }
+
+  function vcHangup() {
+    vcLog('Hangup');
+    vcConnected = false;
+    if (vcMicWorklet) { try { vcMicWorklet.disconnect(); } catch {} vcMicWorklet = null; }
+    if (vcWs) { try { vcWs.close(); } catch {} vcWs = null; }
+    if (vcMicStream) { vcMicStream.getTracks().forEach(t => t.stop()); vcMicStream = null; }
+    if (vcMicCtx) { try { vcMicCtx.close(); } catch {} vcMicCtx = null; }
+    if (vcAudioCtx) { try { vcAudioCtx.close(); } catch {} vcAudioCtx = null; }
+    vcPlayQueue = [];
+    vcPlayCount = 0;
+    vcIsPlaying = false;
+    vcIsMuted = false;
+    vcCurrentAiText = '';
+    vcOverlay.className = 'vc-overlay';
+  }
+
+  // ---- Helpers ----
+  function vcArrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
+
+  function vcBase64ToBytes(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
   </script>
 </body>
 </html>
