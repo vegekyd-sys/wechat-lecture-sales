@@ -1184,8 +1184,10 @@
   let vcMicCtx = null;       // AudioContext for mic capture
   let vcMicWorklet = null;   // AudioWorklet node
   let vcIsMuted = false;
-  let vcPlayQueue = [];      // Audio chunks to play
+  let vcPlayQueue = [];      // Audio chunks to play (used for interruption clearing)
   let vcIsPlaying = false;
+  let vcNextPlayTime = 0;    // Scheduled playback time for gapless audio
+  let vcActiveSources = [];  // Track active AudioBufferSourceNodes for interruption
   let vcCurrentAiText = '';
 
   const vcOverlay = document.getElementById('vcOverlay');
@@ -1356,7 +1358,19 @@
     if (msg.toolCall) {
       const fn = msg.toolCall.functionCalls?.[0];
       if (fn && fn.name === 'end_call') {
-        vcLog('AI called end_call');
+        vcLog('AI called end_call (id=' + fn.id + ')');
+        // Send toolResponse back to Gemini so the session completes properly
+        if (vcWs && vcWs.readyState === WebSocket.OPEN) {
+          vcWs.send(JSON.stringify({
+            toolResponse: {
+              functionResponses: [{
+                id: fn.id,
+                name: 'end_call',
+                response: { result: 'call_ended' }
+              }]
+            }
+          }));
+        }
         // Wait for any remaining audio to finish, then hangup
         setTimeout(() => {
           vcStatusEl.textContent = currentLang === 'zh' ? '通话已结束' :
@@ -1382,8 +1396,7 @@
 
       // Interruption
       if (sc.interrupted) {
-        vcPlayQueue = [];
-        vcAiSpeaking = false;
+        vcStopAllPlayback();
         vcOverlay.classList.remove('ai-speaking');
         return;
       }
@@ -1398,7 +1411,19 @@
           }
           // Function call in parts
           if (part.functionCall && part.functionCall.name === 'end_call') {
-            vcLog('AI end_call (via part)');
+            vcLog('AI end_call (via part, id=' + part.functionCall.id + ')');
+            // Send toolResponse back to Gemini
+            if (vcWs && vcWs.readyState === WebSocket.OPEN) {
+              vcWs.send(JSON.stringify({
+                toolResponse: {
+                  functionResponses: [{
+                    id: part.functionCall.id,
+                    name: 'end_call',
+                    response: { result: 'call_ended' }
+                  }]
+                }
+              }));
+            }
             setTimeout(() => {
               vcStatusEl.textContent = currentLang === 'zh' ? '通话已结束' :
                 currentLang === 'en' ? 'Call ended' : '通話終了';
@@ -1478,8 +1503,6 @@
         const worklet = new AudioWorkletNode(vcMicCtx, 'pcm-processor');
         worklet.port.onmessage = (e) => {
           if (vcIsMuted || !vcWs || vcWs.readyState !== WebSocket.OPEN) return;
-          // Suppress mic input while AI is speaking to prevent echo triggering VAD
-          if (vcAiSpeaking) return;
           // Downsample from native rate to 16000
           const pcm16 = new Int16Array(e.data.pcm);
           const float32 = new Float32Array(pcm16.length);
@@ -1505,7 +1528,6 @@
         const processor = vcMicCtx.createScriptProcessor(4096, 1, 1);
         processor.onaudioprocess = (e) => {
           if (vcIsMuted || !vcWs || vcWs.readyState !== WebSocket.OPEN) return;
-          if (vcAiSpeaking) return;
           const float32 = e.inputBuffer.getChannelData(0);
           const resampled = vcDownsample(float32, nativeRate, 16000);
           const pcm16 = new Int16Array(resampled.length);
@@ -1527,27 +1549,22 @@
     }
   }
 
-  // ---- Audio playback ----
+  // ---- Audio playback (gapless, time-scheduled) ----
   let vcPlayCount = 0;
 
   function vcQueueAudio(base64Data) {
     const bytes = vcBase64ToBytes(base64Data);
-    vcPlayQueue.push(bytes);
     vcPlayCount++;
     if (vcPlayCount % 20 === 1) vcLog('Play#' + vcPlayCount + ' ' + bytes.length + 'B');
-    if (!vcIsPlaying) vcPlayNext();
+    vcScheduleAudio(bytes);
   }
 
-  async function vcPlayNext() {
-    if (vcPlayQueue.length === 0) { vcIsPlaying = false; vcAiSpeaking = false; return; }
-    vcIsPlaying = true;
-    const bytes = vcPlayQueue.shift();
-
+  function vcScheduleAudio(bytes) {
     if (!vcAudioCtx) {
       vcAudioCtx = new AudioContext({ sampleRate: 24000 });
     }
     if (vcAudioCtx.state === 'suspended') {
-      try { await vcAudioCtx.resume(); } catch (e) { vcLog('AudioCtx resume fail'); }
+      try { vcAudioCtx.resume(); } catch (e) { vcLog('AudioCtx resume fail'); }
     }
 
     const float32 = new Float32Array(bytes.length / 2);
@@ -1562,8 +1579,30 @@
     const source = vcAudioCtx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(vcAudioCtx.destination);
-    source.onended = () => vcPlayNext();
-    source.start();
+
+    // Schedule precisely after the previous chunk ends — no gaps, no clicks
+    const now = vcAudioCtx.currentTime;
+    const startTime = Math.max(now + 0.005, vcNextPlayTime);
+    source.start(startTime);
+    vcNextPlayTime = startTime + audioBuffer.duration;
+
+    // Track for interruption cleanup
+    vcActiveSources.push(source);
+    source.onended = () => {
+      vcActiveSources = vcActiveSources.filter(s => s !== source);
+      if (vcActiveSources.length === 0) {
+        vcAiSpeaking = false;
+      }
+    };
+  }
+
+  function vcStopAllPlayback() {
+    for (const s of vcActiveSources) {
+      try { s.stop(); } catch {}
+    }
+    vcActiveSources = [];
+    vcNextPlayTime = 0;
+    vcAiSpeaking = false;
   }
 
   // ---- Captions ----
@@ -1605,6 +1644,7 @@
   function vcHangup() {
     vcLog('Hangup');
     vcConnected = false;
+    vcStopAllPlayback();
     if (vcMicWorklet) { try { vcMicWorklet.disconnect(); } catch {} vcMicWorklet = null; }
     if (vcWs) { try { vcWs.close(); } catch {} vcWs = null; }
     if (vcMicStream) { vcMicStream.getTracks().forEach(t => t.stop()); vcMicStream = null; }
