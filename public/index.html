@@ -1175,7 +1175,7 @@
     if (el) { el.style.display = 'block'; el.textContent += msg + '\n'; el.scrollTop = el.scrollHeight; }
   }
 
-  const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-preview-12-2025';
+  const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
   const GEMINI_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
   let vcWs = null;           // WebSocket
@@ -1362,7 +1362,7 @@
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } }
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
           }
         },
         systemInstruction: { parts: [{ text: VOICE_SYSTEM_INSTRUCTION }] },
@@ -1374,16 +1374,28 @@
     }));
   }
 
-  function vcOnWsMessage(event) {
-    let msg;
+  // Message queue to ensure order when Blob messages arrive asynchronously
+  let vcMsgQueue = [];
+  let vcMsgProcessing = false;
+
+  async function vcOnWsMessage(event) {
+    let text;
     if (event.data instanceof Blob) {
-      event.data.text().then(text => {
-        try { vcHandleServerMsg(JSON.parse(text)); } catch {}
-      });
-      return;
+      text = await event.data.text();
+    } else {
+      text = event.data;
     }
-    try { msg = JSON.parse(event.data); } catch { return; }
-    vcHandleServerMsg(msg);
+    let msg;
+    try { msg = JSON.parse(text); } catch { return; }
+    // Queue and process in order to prevent async Blob from causing reordering
+    vcMsgQueue.push(msg);
+    if (!vcMsgProcessing) {
+      vcMsgProcessing = true;
+      while (vcMsgQueue.length > 0) {
+        vcHandleServerMsg(vcMsgQueue.shift());
+      }
+      vcMsgProcessing = false;
+    }
   }
 
   function vcHandleServerMsg(msg) {
@@ -1499,8 +1511,9 @@
         }
       }
 
-      // Turn complete
+      // Turn complete — flush any remaining buffered audio
       if (sc.turnComplete) {
+        vcFlushAudio();
         vcAiSpeaking = false;
         vcOverlay.classList.remove('ai-speaking');
       }
@@ -1612,10 +1625,17 @@
     }
   }
 
-  // ---- Audio playback (simple nextPlayTime scheduling, 24kHz context = no resampling) ----
+  // ---- Audio playback ----
+  // Accumulate small chunks into larger buffers (≥320ms) before playing.
+  // Direct WebSocket sends many tiny audio packets (20-60ms each). Playing each
+  // individually creates too many AudioBufferSourceNode boundaries = crackling.
+  // The friend's Python server-proxy naturally consolidates chunks; we emulate this.
   let vcPlayCount = 0;
   let vcNextPlayTime = 0;
   let vcGainNode = null;
+  let vcAccumBuf = [];       // accumulated Float32Array chunks
+  let vcAccumSamples = 0;    // total samples in accumulator
+  const VC_MIN_SAMPLES = 7680; // 320ms at 24kHz — flush threshold
 
   function vcInitGainNode() {
     if (vcGainNode || !vcAudioCtx) return;
@@ -1626,7 +1646,7 @@
   function vcQueueAudio(base64Data) {
     const bytes = vcBase64ToBytes(base64Data);
     vcPlayCount++;
-    if (vcPlayCount % 20 === 1) vcLog('Play#' + vcPlayCount + ' ' + bytes.length + 'B');
+    if (vcPlayCount % 20 === 1) vcLog('Play#' + vcPlayCount + ' ' + bytes.length + 'B accum=' + vcAccumSamples);
 
     // Decode 16-bit little-endian PCM to Float32
     const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2);
@@ -1635,15 +1655,38 @@
       float32[i] = pcm[i] / 32768;
     }
 
-    // AudioContext is 24kHz, same as Gemini output — no resampling needed
-    const audioBuffer = vcAudioCtx.createBuffer(1, float32.length, 24000);
-    audioBuffer.getChannelData(0).set(float32);
+    // Accumulate into buffer
+    vcAccumBuf.push(float32);
+    vcAccumSamples += float32.length;
+
+    // Flush when we have enough data
+    if (vcAccumSamples >= VC_MIN_SAMPLES) {
+      vcFlushAudio();
+    }
+  }
+
+  function vcFlushAudio() {
+    if (vcAccumSamples === 0) return;
+
+    // Merge all accumulated chunks into one contiguous buffer
+    const merged = new Float32Array(vcAccumSamples);
+    let offset = 0;
+    for (const chunk of vcAccumBuf) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    vcAccumBuf = [];
+    vcAccumSamples = 0;
+
+    // AudioContext is 24kHz, same as Gemini output — no resampling
+    const audioBuffer = vcAudioCtx.createBuffer(1, merged.length, 24000);
+    audioBuffer.getChannelData(0).set(merged);
 
     const source = vcAudioCtx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(vcGainNode || vcAudioCtx.destination);
 
-    // Gapless scheduling: each chunk starts exactly when the previous ends
+    // Gapless scheduling
     if (vcNextPlayTime < vcAudioCtx.currentTime) {
       vcNextPlayTime = vcAudioCtx.currentTime;
     }
@@ -1652,6 +1695,8 @@
   }
 
   function vcStopAllPlayback() {
+    vcAccumBuf = [];
+    vcAccumSamples = 0;
     vcNextPlayTime = 0;
     vcIsPlaying = false;
     // Fade out to avoid click on interruption
