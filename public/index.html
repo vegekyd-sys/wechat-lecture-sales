@@ -1194,6 +1194,77 @@
   const vcCaptions = document.getElementById('vcCaptions');
   const vcStatusEl = document.getElementById('vcStatus');
 
+  // ---- Phone sound effects (synthesized via Web Audio API) ----
+  let vcRingOsc = null;
+  let vcRingGain = null;
+  let vcRingTimer = null;
+
+  function vcStartRingTone() {
+    if (!vcAudioCtx) return;
+    // Japanese-style ringback: 400Hz, 1s on / 2s off
+    vcRingGain = vcAudioCtx.createGain();
+    vcRingGain.gain.value = 0;
+    vcRingGain.connect(vcAudioCtx.destination);
+
+    vcRingOsc = vcAudioCtx.createOscillator();
+    vcRingOsc.type = 'sine';
+    vcRingOsc.frequency.value = 400;
+    vcRingOsc.connect(vcRingGain);
+    vcRingOsc.start();
+
+    let ringOn = true;
+    // Start with first ring immediately
+    vcRingGain.gain.setValueAtTime(0.15, vcAudioCtx.currentTime);
+    setTimeout(() => {
+      if (vcRingGain) vcRingGain.gain.setValueAtTime(0, vcAudioCtx.currentTime);
+    }, 1000);
+
+    vcRingTimer = setInterval(() => {
+      if (!vcRingGain || !vcAudioCtx) { vcStopRingTone(); return; }
+      ringOn = !ringOn;
+      if (ringOn) {
+        vcRingGain.gain.setValueAtTime(0.15, vcAudioCtx.currentTime);
+        setTimeout(() => {
+          if (vcRingGain && vcAudioCtx) vcRingGain.gain.setValueAtTime(0, vcAudioCtx.currentTime);
+        }, 1000);
+      }
+    }, 1500);
+  }
+
+  function vcStopRingTone() {
+    if (vcRingTimer) { clearInterval(vcRingTimer); vcRingTimer = null; }
+    if (vcRingOsc) { try { vcRingOsc.stop(); } catch {} vcRingOsc = null; }
+    vcRingGain = null;
+  }
+
+  function vcPlayHangupTone(audioCtx) {
+    // Three short descending beeps: classic phone disconnect
+    if (!audioCtx || audioCtx.state === 'closed') return;
+    const now = audioCtx.currentTime;
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0;
+    gain.connect(audioCtx.destination);
+
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.connect(gain);
+
+    // Beep 1: 480Hz
+    osc.frequency.setValueAtTime(480, now);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.setValueAtTime(0, now + 0.15);
+    // Beep 2: 480Hz
+    gain.gain.setValueAtTime(0.2, now + 0.25);
+    gain.gain.setValueAtTime(0, now + 0.4);
+    // Beep 3: 440Hz (lower)
+    osc.frequency.setValueAtTime(440, now + 0.5);
+    gain.gain.setValueAtTime(0.2, now + 0.5);
+    gain.gain.setValueAtTime(0, now + 0.8);
+
+    osc.start(now);
+    osc.stop(now + 0.85);
+  }
+
   // Voice system instruction - loaded from voice-service.md
   let VOICE_SYSTEM_INSTRUCTION = '';
 
@@ -1234,6 +1305,9 @@
       if (vcAudioCtx.state === 'suspended') await vcAudioCtx.resume();
       vcLog('Playback AudioCtx: ' + vcAudioCtx.state);
 
+      // Start ringing tone while connecting
+      vcStartRingTone();
+
       // 1. Request mic permission FIRST (must be close to user gesture for iOS)
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('需要 HTTPS 才能使用麦克风。请通过 Vercel 部署链接访问。');
@@ -1263,6 +1337,7 @@
       vcWs.onmessage = (e) => vcOnWsMessage(e);
       vcWs.onerror = (e) => {
         vcLog('WS error');
+        vcStopRingTone();
         if (!vcConnected) {
           vcStatusEl.textContent = 'Connection error';
         }
@@ -1277,6 +1352,7 @@
         }
       };
     } catch (err) {
+      vcStopRingTone();
       vcLog('ERROR: ' + err.message);
       const errMsgs = { ja: 'エラー', zh: '错误', en: 'Error' };
       vcStatusEl.textContent = (errMsgs[currentLang] || errMsgs.ja) + ': ' + err.message;
@@ -1333,6 +1409,7 @@
     // Setup complete
     if (msg.setupComplete) {
       vcLog('Setup complete!');
+      vcStopRingTone();
       vcConnected = true;
       const connected = { ja: '通話中', zh: '通话中', en: 'Connected' };
       vcStatusEl.textContent = connected[currentLang] || connected.ja;
@@ -1644,12 +1721,21 @@
   function vcHangup() {
     vcLog('Hangup');
     vcConnected = false;
+    vcStopRingTone();
     vcStopAllPlayback();
     if (vcMicWorklet) { try { vcMicWorklet.disconnect(); } catch {} vcMicWorklet = null; }
     if (vcWs) { try { vcWs.close(); } catch {} vcWs = null; }
     if (vcMicStream) { vcMicStream.getTracks().forEach(t => t.stop()); vcMicStream = null; }
     if (vcMicCtx) { try { vcMicCtx.close(); } catch {} vcMicCtx = null; }
-    if (vcAudioCtx) { try { vcAudioCtx.close(); } catch {} vcAudioCtx = null; }
+
+    // Play hangup tone, then close audio context
+    if (vcAudioCtx && vcAudioCtx.state !== 'closed') {
+      vcPlayHangupTone(vcAudioCtx);
+      const ctx = vcAudioCtx;
+      setTimeout(() => { try { ctx.close(); } catch {} }, 1000);
+    }
+    vcAudioCtx = null;
+
     vcPlayQueue = [];
     vcPlayCount = 0;
     vcIsPlaying = false;
