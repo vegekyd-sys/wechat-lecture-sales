@@ -1184,10 +1184,7 @@
   let vcMicCtx = null;       // AudioContext for mic capture
   let vcMicWorklet = null;   // AudioWorklet node
   let vcIsMuted = false;
-  let vcPlayQueue = [];      // Audio chunks to play (used for interruption clearing)
-  let vcIsPlaying = false;
-  let vcNextPlayTime = 0;    // Scheduled playback time for gapless audio
-  let vcActiveSources = [];  // Track active AudioBufferSourceNodes for interruption
+  let vcPlaybackWorklet = null; // AudioWorklet for smooth streaming playback
   let vcCurrentAiText = '';
 
   const vcOverlay = document.getElementById('vcOverlay');
@@ -1388,7 +1385,7 @@
     vcHandleServerMsg(msg);
   }
 
-  function vcHandleServerMsg(msg) {
+  async function vcHandleServerMsg(msg) {
     // Log all messages for debugging
     const msgKeys = Object.keys(msg);
     vcLog('GMsg:' + msgKeys.join(',') + (msg.serverContent ? ' p:' + (msg.serverContent.modelTurn?.parts?.length||0) + ' done:' + !!msg.serverContent.turnComplete : ''));
@@ -1401,6 +1398,7 @@
       const connected = { ja: '通話中', zh: '通话中', en: 'Connected' };
       vcStatusEl.textContent = connected[currentLang] || connected.ja;
       vcOverlay.classList.add('connected');
+      await vcInitPlaybackWorklet();
       vcStartMic();
       // Send initial greeting prompt - keep it SHORT so AI gives a brief greeting
       const greetPrompts = {
@@ -1613,59 +1611,66 @@
     }
   }
 
-  // ---- Audio playback (gapless, time-scheduled) ----
+  // ---- Audio playback (streaming via AudioWorklet — no chunk boundary artifacts) ----
   let vcPlayCount = 0;
+  const VC_DATA_RATE = 24000; // Gemini outputs 24kHz PCM
+
+  async function vcInitPlaybackWorklet() {
+    if (vcPlaybackWorklet) return;
+    if (!vcAudioCtx) return;
+    try {
+      await vcAudioCtx.audioWorklet.addModule('/playback-worklet.js');
+      vcPlaybackWorklet = new AudioWorkletNode(vcAudioCtx, 'playback-processor');
+      vcPlaybackWorklet.connect(vcAudioCtx.destination);
+      vcLog('Playback worklet OK (ctx=' + vcAudioCtx.sampleRate + 'Hz)');
+    } catch (err) {
+      vcLog('Playback worklet FAIL: ' + err.message);
+    }
+  }
 
   function vcQueueAudio(base64Data) {
     const bytes = vcBase64ToBytes(base64Data);
     vcPlayCount++;
     if (vcPlayCount % 20 === 1) vcLog('Play#' + vcPlayCount + ' ' + bytes.length + 'B');
-    vcScheduleAudio(bytes);
-  }
 
-  function vcScheduleAudio(bytes) {
-    if (!vcAudioCtx) {
-      vcAudioCtx = new AudioContext({ sampleRate: 24000 });
-    }
-    if (vcAudioCtx.state === 'suspended') {
-      try { vcAudioCtx.resume(); } catch (e) { vcLog('AudioCtx resume fail'); }
-    }
-
+    // Decode 16-bit PCM to float32
     const float32 = new Float32Array(bytes.length / 2);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     for (let i = 0; i < float32.length; i++) {
       float32[i] = view.getInt16(i * 2, true) / 32768;
     }
 
-    const audioBuffer = vcAudioCtx.createBuffer(1, float32.length, 24000);
-    audioBuffer.getChannelData(0).set(float32);
+    // If context sample rate differs from data rate, resample
+    const ctxRate = vcAudioCtx ? vcAudioCtx.sampleRate : VC_DATA_RATE;
+    let samples = float32;
+    if (ctxRate !== VC_DATA_RATE) {
+      samples = vcResample(float32, VC_DATA_RATE, ctxRate);
+    }
 
-    const source = vcAudioCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(vcAudioCtx.destination);
+    // Stream into worklet ring buffer — continuous output, no chunk boundaries
+    if (vcPlaybackWorklet) {
+      vcPlaybackWorklet.port.postMessage(samples, [samples.buffer]);
+    }
+  }
 
-    // Schedule precisely after the previous chunk ends — no gaps, no clicks
-    const now = vcAudioCtx.currentTime;
-    const startTime = Math.max(now + 0.005, vcNextPlayTime);
-    source.start(startTime);
-    vcNextPlayTime = startTime + audioBuffer.duration;
-
-    // Track for interruption cleanup
-    vcActiveSources.push(source);
-    source.onended = () => {
-      vcActiveSources = vcActiveSources.filter(s => s !== source);
-      if (vcActiveSources.length === 0) {
-        vcAiSpeaking = false;
-      }
-    };
+  function vcResample(buffer, fromRate, toRate) {
+    const ratio = fromRate / toRate;
+    const newLen = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) {
+      const srcIdx = i * ratio;
+      const idx0 = Math.floor(srcIdx);
+      const idx1 = Math.min(idx0 + 1, buffer.length - 1);
+      const frac = srcIdx - idx0;
+      result[i] = buffer[idx0] * (1 - frac) + buffer[idx1] * frac;
+    }
+    return result;
   }
 
   function vcStopAllPlayback() {
-    for (const s of vcActiveSources) {
-      try { s.stop(); } catch {}
+    if (vcPlaybackWorklet) {
+      vcPlaybackWorklet.port.postMessage('clear');
     }
-    vcActiveSources = [];
-    vcNextPlayTime = 0;
     vcAiSpeaking = false;
   }
 
@@ -1710,6 +1715,7 @@
     vcConnected = false;
     vcStopRingTone();
     vcStopAllPlayback();
+    if (vcPlaybackWorklet) { try { vcPlaybackWorklet.disconnect(); } catch {} vcPlaybackWorklet = null; }
     if (vcMicWorklet) { try { vcMicWorklet.disconnect(); } catch {} vcMicWorklet = null; }
     if (vcWs) { try { vcWs.close(); } catch {} vcWs = null; }
     if (vcMicStream) { vcMicStream.getTracks().forEach(t => t.stop()); vcMicStream = null; }
@@ -1718,9 +1724,7 @@
     vcPlayHangupTone();
     if (vcAudioCtx) { try { vcAudioCtx.close(); } catch {} vcAudioCtx = null; }
 
-    vcPlayQueue = [];
     vcPlayCount = 0;
-    vcIsPlaying = false;
     vcAiSpeaking = false;
     vcIsMuted = false;
     vcCurrentAiText = '';
