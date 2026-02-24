@@ -1291,10 +1291,10 @@
       // Load voice system instruction
       await vcLoadSystemInstruction();
 
-      // Create AudioContext immediately in click handler (browser autoplay policy)
-      // Use browser's native sample rate for max compatibility (ring tone, playback worklet handles resampling)
+      // Create AudioContext at 24kHz to match Gemini's output rate EXACTLY.
+      // This eliminates per-buffer resampling which causes crackling at chunk boundaries.
       if (!vcAudioCtx) {
-        vcAudioCtx = new AudioContext();
+        vcAudioCtx = new AudioContext({ sampleRate: 24000 });
       }
       if (vcAudioCtx.state === 'suspended') await vcAudioCtx.resume();
       vcLog('Playback AudioCtx: ' + vcAudioCtx.state + ' rate=' + vcAudioCtx.sampleRate);
@@ -1612,16 +1612,9 @@
     }
   }
 
-  // ---- Audio playback (based on Google's official Gemini Live API demo) ----
-  // Ref: https://github.com/google-gemini/multimodal-live-api-web-console/blob/main/src/lib/audio-streamer.ts
+  // ---- Audio playback (simple nextPlayTime scheduling, 24kHz context = no resampling) ----
   let vcPlayCount = 0;
-  const VC_SAMPLE_RATE = 24000;     // Gemini outputs 24kHz PCM
-  const VC_BUFFER_SIZE = 7680;      // 320ms at 24kHz — matches Google's demo
-  const VC_INITIAL_BUFFER = 0.1;    // 100ms initial buffer before playback starts
-  const VC_SCHEDULE_AHEAD = 0.2;    // Schedule 200ms ahead
-  let vcAudioQueue = [];
-  let vcScheduledTime = 0;
-  let vcCheckInterval = null;
+  let vcNextPlayTime = 0;
   let vcGainNode = null;
 
   function vcInitGainNode() {
@@ -1635,82 +1628,33 @@
     vcPlayCount++;
     if (vcPlayCount % 20 === 1) vcLog('Play#' + vcPlayCount + ' ' + bytes.length + 'B');
 
-    // Decode 16-bit PCM to Float32
-    const float32 = new Float32Array(bytes.length / 2);
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let i = 0; i < float32.length; i++) {
-      float32[i] = view.getInt16(i * 2, true) / 32768;
+    // Decode 16-bit little-endian PCM to Float32
+    const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2);
+    const float32 = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) {
+      float32[i] = pcm[i] / 32768;
     }
 
-    // Split into fixed-size chunks for consistent scheduling
-    let offset = 0;
-    while (offset + VC_BUFFER_SIZE <= float32.length) {
-      vcAudioQueue.push(float32.slice(offset, offset + VC_BUFFER_SIZE));
-      offset += VC_BUFFER_SIZE;
+    // AudioContext is 24kHz, same as Gemini output — no resampling needed
+    const audioBuffer = vcAudioCtx.createBuffer(1, float32.length, 24000);
+    audioBuffer.getChannelData(0).set(float32);
+
+    const source = vcAudioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(vcGainNode || vcAudioCtx.destination);
+
+    // Gapless scheduling: each chunk starts exactly when the previous ends
+    if (vcNextPlayTime < vcAudioCtx.currentTime) {
+      vcNextPlayTime = vcAudioCtx.currentTime;
     }
-    if (offset < float32.length) {
-      vcAudioQueue.push(float32.slice(offset));
-    }
-
-    // Start scheduling if not already
-    if (!vcIsPlaying) {
-      vcIsPlaying = true;
-      vcScheduledTime = vcAudioCtx.currentTime + VC_INITIAL_BUFFER;
-      vcScheduleNextBuffer();
-    }
-  }
-
-  function vcScheduleNextBuffer() {
-    if (!vcAudioCtx || !vcGainNode) return;
-
-    while (vcAudioQueue.length > 0 && vcScheduledTime < vcAudioCtx.currentTime + VC_SCHEDULE_AHEAD) {
-      const audioData = vcAudioQueue.shift();
-
-      // createBuffer at 24kHz — browser auto-resamples to context's native rate (no manual resampling!)
-      const audioBuffer = vcAudioCtx.createBuffer(1, audioData.length, VC_SAMPLE_RATE);
-      audioBuffer.getChannelData(0).set(audioData);
-
-      const source = vcAudioCtx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(vcGainNode);
-
-      const startTime = Math.max(vcScheduledTime, vcAudioCtx.currentTime);
-      source.start(startTime);
-      vcScheduledTime = startTime + audioBuffer.duration;
-
-      // Track completion
-      if (vcAudioQueue.length === 0) {
-        source.onended = () => {
-          if (vcAudioQueue.length === 0) {
-            vcAiSpeaking = false;
-            vcIsPlaying = false;
-          }
-        };
-      }
-    }
-
-    // Keep scheduling loop alive
-    if (vcAudioQueue.length === 0) {
-      // Queue empty but stream may continue — poll for new data
-      if (!vcCheckInterval) {
-        vcCheckInterval = setInterval(() => {
-          if (vcAudioQueue.length > 0) {
-            vcScheduleNextBuffer();
-          }
-        }, 100);
-      }
-    } else {
-      // Schedule next check just before we run out
-      const nextCheck = (vcScheduledTime - vcAudioCtx.currentTime) * 1000;
-      setTimeout(() => vcScheduleNextBuffer(), Math.max(0, nextCheck - 50));
-    }
+    source.start(vcNextPlayTime);
+    vcNextPlayTime += audioBuffer.duration;
   }
 
   function vcStopAllPlayback() {
-    vcAudioQueue = [];
+    vcNextPlayTime = 0;
     vcIsPlaying = false;
-    if (vcCheckInterval) { clearInterval(vcCheckInterval); vcCheckInterval = null; }
-    // Fade out to avoid click (Google's approach)
+    // Fade out to avoid click on interruption
     if (vcGainNode && vcAudioCtx) {
       vcGainNode.gain.linearRampToValueAtTime(0, vcAudioCtx.currentTime + 0.1);
       setTimeout(() => {
@@ -1721,7 +1665,6 @@
         }
       }, 200);
     }
-    vcScheduledTime = 0;
     vcAiSpeaking = false;
   }
 
