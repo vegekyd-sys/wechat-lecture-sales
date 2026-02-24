@@ -1184,7 +1184,7 @@
   let vcMicCtx = null;       // AudioContext for mic capture
   let vcMicWorklet = null;   // AudioWorklet node
   let vcIsMuted = false;
-  let vcPlaybackWorklet = null; // AudioWorklet for smooth streaming playback
+  let vcIsPlaying = false;
   let vcCurrentAiText = '';
 
   const vcOverlay = document.getElementById('vcOverlay');
@@ -1386,7 +1386,7 @@
     vcHandleServerMsg(msg);
   }
 
-  async function vcHandleServerMsg(msg) {
+  function vcHandleServerMsg(msg) {
     // Log all messages for debugging
     const msgKeys = Object.keys(msg);
     vcLog('GMsg:' + msgKeys.join(',') + (msg.serverContent ? ' p:' + (msg.serverContent.modelTurn?.parts?.length||0) + ' done:' + !!msg.serverContent.turnComplete : ''));
@@ -1399,7 +1399,7 @@
       const connected = { ja: '通話中', zh: '通话中', en: 'Connected' };
       vcStatusEl.textContent = connected[currentLang] || connected.ja;
       vcOverlay.classList.add('connected');
-      await vcInitPlaybackWorklet();
+      vcInitGainNode();
       vcStartMic();
       // Send initial greeting prompt - keep it SHORT so AI gives a brief greeting
       const greetPrompts = {
@@ -1612,21 +1612,22 @@
     }
   }
 
-  // ---- Audio playback (streaming via AudioWorklet — no chunk boundary artifacts) ----
+  // ---- Audio playback (based on Google's official Gemini Live API demo) ----
+  // Ref: https://github.com/google-gemini/multimodal-live-api-web-console/blob/main/src/lib/audio-streamer.ts
   let vcPlayCount = 0;
-  const VC_DATA_RATE = 24000; // Gemini outputs 24kHz PCM
+  const VC_SAMPLE_RATE = 24000;     // Gemini outputs 24kHz PCM
+  const VC_BUFFER_SIZE = 7680;      // 320ms at 24kHz — matches Google's demo
+  const VC_INITIAL_BUFFER = 0.1;    // 100ms initial buffer before playback starts
+  const VC_SCHEDULE_AHEAD = 0.2;    // Schedule 200ms ahead
+  let vcAudioQueue = [];
+  let vcScheduledTime = 0;
+  let vcCheckInterval = null;
+  let vcGainNode = null;
 
-  async function vcInitPlaybackWorklet() {
-    if (vcPlaybackWorklet) return;
-    if (!vcAudioCtx) return;
-    try {
-      await vcAudioCtx.audioWorklet.addModule('/playback-worklet.js');
-      vcPlaybackWorklet = new AudioWorkletNode(vcAudioCtx, 'playback-processor');
-      vcPlaybackWorklet.connect(vcAudioCtx.destination);
-      vcLog('Playback worklet OK (ctx=' + vcAudioCtx.sampleRate + 'Hz)');
-    } catch (err) {
-      vcLog('Playback worklet FAIL: ' + err.message);
-    }
+  function vcInitGainNode() {
+    if (vcGainNode || !vcAudioCtx) return;
+    vcGainNode = vcAudioCtx.createGain();
+    vcGainNode.connect(vcAudioCtx.destination);
   }
 
   function vcQueueAudio(base64Data) {
@@ -1634,44 +1635,93 @@
     vcPlayCount++;
     if (vcPlayCount % 20 === 1) vcLog('Play#' + vcPlayCount + ' ' + bytes.length + 'B');
 
-    // Decode 16-bit PCM to float32
+    // Decode 16-bit PCM to Float32
     const float32 = new Float32Array(bytes.length / 2);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     for (let i = 0; i < float32.length; i++) {
       float32[i] = view.getInt16(i * 2, true) / 32768;
     }
 
-    // If context sample rate differs from data rate, resample
-    const ctxRate = vcAudioCtx ? vcAudioCtx.sampleRate : VC_DATA_RATE;
-    let samples = float32;
-    if (ctxRate !== VC_DATA_RATE) {
-      samples = vcResample(float32, VC_DATA_RATE, ctxRate);
+    // Split into fixed-size chunks for consistent scheduling
+    let offset = 0;
+    while (offset + VC_BUFFER_SIZE <= float32.length) {
+      vcAudioQueue.push(float32.slice(offset, offset + VC_BUFFER_SIZE));
+      offset += VC_BUFFER_SIZE;
+    }
+    if (offset < float32.length) {
+      vcAudioQueue.push(float32.slice(offset));
     }
 
-    // Stream into worklet ring buffer — continuous output, no chunk boundaries
-    if (vcPlaybackWorklet) {
-      vcPlaybackWorklet.port.postMessage(samples, [samples.buffer]);
+    // Start scheduling if not already
+    if (!vcIsPlaying) {
+      vcIsPlaying = true;
+      vcScheduledTime = vcAudioCtx.currentTime + VC_INITIAL_BUFFER;
+      vcScheduleNextBuffer();
     }
   }
 
-  function vcResample(buffer, fromRate, toRate) {
-    const ratio = fromRate / toRate;
-    const newLen = Math.round(buffer.length / ratio);
-    const result = new Float32Array(newLen);
-    for (let i = 0; i < newLen; i++) {
-      const srcIdx = i * ratio;
-      const idx0 = Math.floor(srcIdx);
-      const idx1 = Math.min(idx0 + 1, buffer.length - 1);
-      const frac = srcIdx - idx0;
-      result[i] = buffer[idx0] * (1 - frac) + buffer[idx1] * frac;
+  function vcScheduleNextBuffer() {
+    if (!vcAudioCtx || !vcGainNode) return;
+
+    while (vcAudioQueue.length > 0 && vcScheduledTime < vcAudioCtx.currentTime + VC_SCHEDULE_AHEAD) {
+      const audioData = vcAudioQueue.shift();
+
+      // createBuffer at 24kHz — browser auto-resamples to context's native rate (no manual resampling!)
+      const audioBuffer = vcAudioCtx.createBuffer(1, audioData.length, VC_SAMPLE_RATE);
+      audioBuffer.getChannelData(0).set(audioData);
+
+      const source = vcAudioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(vcGainNode);
+
+      const startTime = Math.max(vcScheduledTime, vcAudioCtx.currentTime);
+      source.start(startTime);
+      vcScheduledTime = startTime + audioBuffer.duration;
+
+      // Track completion
+      if (vcAudioQueue.length === 0) {
+        source.onended = () => {
+          if (vcAudioQueue.length === 0) {
+            vcAiSpeaking = false;
+            vcIsPlaying = false;
+          }
+        };
+      }
     }
-    return result;
+
+    // Keep scheduling loop alive
+    if (vcAudioQueue.length === 0) {
+      // Queue empty but stream may continue — poll for new data
+      if (!vcCheckInterval) {
+        vcCheckInterval = setInterval(() => {
+          if (vcAudioQueue.length > 0) {
+            vcScheduleNextBuffer();
+          }
+        }, 100);
+      }
+    } else {
+      // Schedule next check just before we run out
+      const nextCheck = (vcScheduledTime - vcAudioCtx.currentTime) * 1000;
+      setTimeout(() => vcScheduleNextBuffer(), Math.max(0, nextCheck - 50));
+    }
   }
 
   function vcStopAllPlayback() {
-    if (vcPlaybackWorklet) {
-      vcPlaybackWorklet.port.postMessage('clear');
+    vcAudioQueue = [];
+    vcIsPlaying = false;
+    if (vcCheckInterval) { clearInterval(vcCheckInterval); vcCheckInterval = null; }
+    // Fade out to avoid click (Google's approach)
+    if (vcGainNode && vcAudioCtx) {
+      vcGainNode.gain.linearRampToValueAtTime(0, vcAudioCtx.currentTime + 0.1);
+      setTimeout(() => {
+        if (vcGainNode && vcAudioCtx) {
+          vcGainNode.disconnect();
+          vcGainNode = vcAudioCtx.createGain();
+          vcGainNode.connect(vcAudioCtx.destination);
+        }
+      }, 200);
     }
+    vcScheduledTime = 0;
     vcAiSpeaking = false;
   }
 
@@ -1716,13 +1766,13 @@
     vcConnected = false;
     vcStopRingTone();
     vcStopAllPlayback();
-    if (vcPlaybackWorklet) { try { vcPlaybackWorklet.disconnect(); } catch {} vcPlaybackWorklet = null; }
     if (vcMicWorklet) { try { vcMicWorklet.disconnect(); } catch {} vcMicWorklet = null; }
     if (vcWs) { try { vcWs.close(); } catch {} vcWs = null; }
     if (vcMicStream) { vcMicStream.getTracks().forEach(t => t.stop()); vcMicStream = null; }
     if (vcMicCtx) { try { vcMicCtx.close(); } catch {} vcMicCtx = null; }
 
     vcPlayHangupTone();
+    if (vcGainNode) { vcGainNode = null; }
     if (vcAudioCtx) { try { vcAudioCtx.close(); } catch {} vcAudioCtx = null; }
 
     vcPlayCount = 0;
