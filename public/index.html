@@ -1197,11 +1197,11 @@
   // ---- Phone sound effects (synthesized via Web Audio API) ----
   let vcRingOsc = null;
   let vcRingGain = null;
-  let vcRingTimer = null;
 
   function vcStartRingTone() {
     if (!vcAudioCtx) return;
-    // Japanese-style ringback: 400Hz, 1s on / 2s off
+    vcStopRingTone();
+
     vcRingGain = vcAudioCtx.createGain();
     vcRingGain.gain.value = 0;
     vcRingGain.connect(vcAudioCtx.destination);
@@ -1210,59 +1210,55 @@
     vcRingOsc.type = 'sine';
     vcRingOsc.frequency.value = 400;
     vcRingOsc.connect(vcRingGain);
-    vcRingOsc.start();
 
-    let ringOn = true;
-    // Start with first ring immediately
-    vcRingGain.gain.setValueAtTime(0.15, vcAudioCtx.currentTime);
-    setTimeout(() => {
-      if (vcRingGain) vcRingGain.gain.setValueAtTime(0, vcAudioCtx.currentTime);
-    }, 1000);
-
-    vcRingTimer = setInterval(() => {
-      if (!vcRingGain || !vcAudioCtx) { vcStopRingTone(); return; }
-      ringOn = !ringOn;
-      if (ringOn) {
-        vcRingGain.gain.setValueAtTime(0.15, vcAudioCtx.currentTime);
-        setTimeout(() => {
-          if (vcRingGain && vcAudioCtx) vcRingGain.gain.setValueAtTime(0, vcAudioCtx.currentTime);
-        }, 1000);
-      }
-    }, 1500);
+    // Schedule ring pattern purely via audio clock (no JS timers)
+    // Japanese-style ringback: 1s on / 2s off, repeat
+    const t0 = vcAudioCtx.currentTime + 0.05;
+    for (let i = 0; i < 10; i++) {
+      const ringStart = t0 + i * 3;
+      vcRingGain.gain.setValueAtTime(0.18, ringStart);
+      vcRingGain.gain.setValueAtTime(0, ringStart + 1);
+    }
+    vcRingOsc.start(t0);
   }
 
   function vcStopRingTone() {
-    if (vcRingTimer) { clearInterval(vcRingTimer); vcRingTimer = null; }
     if (vcRingOsc) { try { vcRingOsc.stop(); } catch {} vcRingOsc = null; }
     vcRingGain = null;
   }
 
-  function vcPlayHangupTone(audioCtx) {
-    // Three short descending beeps: classic phone disconnect
-    if (!audioCtx || audioCtx.state === 'closed') return;
-    const now = audioCtx.currentTime;
-    const gain = audioCtx.createGain();
-    gain.gain.value = 0;
-    gain.connect(audioCtx.destination);
+  function vcPlayHangupTone() {
+    // Use a fresh temporary AudioContext so it doesn't depend on vcAudioCtx state
+    let ctx;
+    try {
+      ctx = new AudioContext();
+    } catch { return; }
 
-    const osc = audioCtx.createOscillator();
+    const now = ctx.currentTime + 0.05;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(ctx.destination);
+
+    const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.connect(gain);
 
-    // Beep 1: 480Hz
+    // Three short beeps: "du du du"
     osc.frequency.setValueAtTime(480, now);
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.setValueAtTime(0, now + 0.15);
-    // Beep 2: 480Hz
-    gain.gain.setValueAtTime(0.2, now + 0.25);
-    gain.gain.setValueAtTime(0, now + 0.4);
-    // Beep 3: 440Hz (lower)
-    osc.frequency.setValueAtTime(440, now + 0.5);
-    gain.gain.setValueAtTime(0.2, now + 0.5);
-    gain.gain.setValueAtTime(0, now + 0.8);
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.setValueAtTime(0, now + 0.18);
+
+    gain.gain.setValueAtTime(0.25, now + 0.3);
+    gain.gain.setValueAtTime(0, now + 0.48);
+
+    osc.frequency.setValueAtTime(440, now + 0.6);
+    gain.gain.setValueAtTime(0.25, now + 0.6);
+    gain.gain.setValueAtTime(0, now + 0.78);
 
     osc.start(now);
     osc.stop(now + 0.85);
+    // Clean up context after sound finishes
+    setTimeout(() => { try { ctx.close(); } catch {} }, 1500);
   }
 
   // Voice system instruction - loaded from voice-service.md
@@ -1369,15 +1365,6 @@
           responseModalities: ['AUDIO'],
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }
-          }
-        },
-        realtimeInputConfig: {
-          automaticActivityDetection: {
-            disabled: false,
-            startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
-            endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
-            prefixPaddingMs: 200,
-            silenceTerminationMs: 2000
           }
         },
         systemInstruction: { parts: [{ text: VOICE_SYSTEM_INSTRUCTION }] },
@@ -1728,13 +1715,8 @@
     if (vcMicStream) { vcMicStream.getTracks().forEach(t => t.stop()); vcMicStream = null; }
     if (vcMicCtx) { try { vcMicCtx.close(); } catch {} vcMicCtx = null; }
 
-    // Play hangup tone, then close audio context
-    if (vcAudioCtx && vcAudioCtx.state !== 'closed') {
-      vcPlayHangupTone(vcAudioCtx);
-      const ctx = vcAudioCtx;
-      setTimeout(() => { try { ctx.close(); } catch {} }, 1000);
-    }
-    vcAudioCtx = null;
+    vcPlayHangupTone();
+    if (vcAudioCtx) { try { vcAudioCtx.close(); } catch {} vcAudioCtx = null; }
 
     vcPlayQueue = [];
     vcPlayCount = 0;
