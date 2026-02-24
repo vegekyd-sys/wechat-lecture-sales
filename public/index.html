@@ -1175,7 +1175,7 @@
     if (el) { el.style.display = 'block'; el.textContent += msg + '\n'; el.scrollTop = el.scrollHeight; }
   }
 
-  const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
+  const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-preview-12-2025';
   const GEMINI_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
   let vcWs = null;           // WebSocket
@@ -1292,11 +1292,12 @@
       await vcLoadSystemInstruction();
 
       // Create AudioContext immediately in click handler (browser autoplay policy)
+      // Use browser's native sample rate for max compatibility (ring tone, playback worklet handles resampling)
       if (!vcAudioCtx) {
-        vcAudioCtx = new AudioContext({ sampleRate: 24000 });
+        vcAudioCtx = new AudioContext();
       }
       if (vcAudioCtx.state === 'suspended') await vcAudioCtx.resume();
-      vcLog('Playback AudioCtx: ' + vcAudioCtx.state);
+      vcLog('Playback AudioCtx: ' + vcAudioCtx.state + ' rate=' + vcAudioCtx.sampleRate);
 
       // Start ringing tone while connecting
       vcStartRingTone();
@@ -1361,7 +1362,7 @@
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } }
           }
         },
         systemInstruction: { parts: [{ text: VOICE_SYSTEM_INSTRUCTION }] },
