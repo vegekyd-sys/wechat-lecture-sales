@@ -1293,6 +1293,15 @@
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }
           }
         },
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            disabled: false,
+            startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
+            endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+            prefixPaddingMs: 200,
+            silenceTerminationMs: 2000
+          }
+        },
         systemInstruction: { parts: [{ text: VOICE_SYSTEM_INSTRUCTION }] },
         tools: [{ functionDeclarations: [{
           name: 'end_call',
@@ -1374,6 +1383,7 @@
       // Interruption
       if (sc.interrupted) {
         vcPlayQueue = [];
+        vcAiSpeaking = false;
         vcOverlay.classList.remove('ai-speaking');
         return;
       }
@@ -1382,6 +1392,7 @@
       if (sc.modelTurn && sc.modelTurn.parts) {
         for (const part of sc.modelTurn.parts) {
           if (part.inlineData && part.inlineData.mimeType && part.inlineData.mimeType.startsWith('audio/')) {
+            vcAiSpeaking = true;
             vcOverlay.classList.add('ai-speaking');
             vcQueueAudio(part.inlineData.data);
           }
@@ -1402,19 +1413,26 @@
 
       // Turn complete
       if (sc.turnComplete) {
+        vcAiSpeaking = false;
         vcOverlay.classList.remove('ai-speaking');
       }
     }
   }
 
   // ---- Mic capture ----
+  let vcAiSpeaking = false; // track if AI is currently outputting audio
+
   function vcDownsample(buffer, fromRate, toRate) {
     if (fromRate === toRate) return buffer;
     const ratio = fromRate / toRate;
     const newLen = Math.round(buffer.length / ratio);
     const result = new Float32Array(newLen);
     for (let i = 0; i < newLen; i++) {
-      result[i] = buffer[Math.round(i * ratio)];
+      const srcIdx = i * ratio;
+      const idx0 = Math.floor(srcIdx);
+      const idx1 = Math.min(idx0 + 1, buffer.length - 1);
+      const frac = srcIdx - idx0;
+      result[i] = buffer[idx0] * (1 - frac) + buffer[idx1] * frac;
     }
     return result;
   }
@@ -1446,6 +1464,13 @@
       }
       updateLevel();
 
+      // Silent sink: AudioWorklet/ScriptProcessor must connect to destination to stay alive,
+      // but we must NOT play mic audio through speakers (causes echo feedback = electric sound).
+      // Route through a GainNode with gain=0 so processing runs but no audio is heard.
+      const silentSink = vcMicCtx.createGain();
+      silentSink.gain.value = 0;
+      silentSink.connect(vcMicCtx.destination);
+
       // Try AudioWorklet (file-based, most reliable)
       let sendCount = 0;
       try {
@@ -1453,6 +1478,8 @@
         const worklet = new AudioWorkletNode(vcMicCtx, 'pcm-processor');
         worklet.port.onmessage = (e) => {
           if (vcIsMuted || !vcWs || vcWs.readyState !== WebSocket.OPEN) return;
+          // Suppress mic input while AI is speaking to prevent echo triggering VAD
+          if (vcAiSpeaking) return;
           // Downsample from native rate to 16000
           const pcm16 = new Int16Array(e.data.pcm);
           const float32 = new Float32Array(pcm16.length);
@@ -1469,7 +1496,7 @@
           if (sendCount <= 3 || sendCount % 100 === 0) vcLog('WK#' + sendCount + ' s=' + out.length);
         };
         source.connect(worklet);
-        worklet.connect(vcMicCtx.destination);
+        worklet.connect(silentSink);
         vcMicWorklet = worklet;
         vcLog('Mic: AudioWorklet OK (' + nativeRate + '→16k)');
       } catch (workletErr) {
@@ -1478,6 +1505,7 @@
         const processor = vcMicCtx.createScriptProcessor(4096, 1, 1);
         processor.onaudioprocess = (e) => {
           if (vcIsMuted || !vcWs || vcWs.readyState !== WebSocket.OPEN) return;
+          if (vcAiSpeaking) return;
           const float32 = e.inputBuffer.getChannelData(0);
           const resampled = vcDownsample(float32, nativeRate, 16000);
           const pcm16 = new Int16Array(resampled.length);
@@ -1490,7 +1518,7 @@
           if (sendCount <= 3 || sendCount % 100 === 0) vcLog('SP#' + sendCount + ' s=' + pcm16.length);
         };
         source.connect(processor);
-        processor.connect(vcMicCtx.destination);
+        processor.connect(silentSink);
         vcMicWorklet = processor;
         vcLog('Mic: ScriptProcessor OK (' + nativeRate + '→16k)');
       }
@@ -1511,7 +1539,7 @@
   }
 
   async function vcPlayNext() {
-    if (vcPlayQueue.length === 0) { vcIsPlaying = false; return; }
+    if (vcPlayQueue.length === 0) { vcIsPlaying = false; vcAiSpeaking = false; return; }
     vcIsPlaying = true;
     const bytes = vcPlayQueue.shift();
 
@@ -1585,6 +1613,7 @@
     vcPlayQueue = [];
     vcPlayCount = 0;
     vcIsPlaying = false;
+    vcAiSpeaking = false;
     vcIsMuted = false;
     vcCurrentAiText = '';
     vcOverlay.className = 'vc-overlay';
